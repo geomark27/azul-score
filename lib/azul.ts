@@ -21,8 +21,15 @@ export const newPlayer = (name: string): Player => ({
   log: [],
 });
 
-/** Puntos de la ronda en curso (colocación de arriba abajo + suelo). */
-export function calc(p: Player) {
+/** Azulejos en el suelo contando la ficha de jugador inicial, que también ocupa espacio. */
+export const floorTiles = (p: Player, first = false) =>
+  Math.min(PEN.length, p.floor + (first ? 1 : 0));
+
+/**
+ * Puntos de la ronda en curso (colocación de arriba abajo + suelo).
+ * `first` = este jugador tomó la ficha de jugador inicial: ocupa un espacio del suelo.
+ */
+export function calc(p: Player, first = false) {
   const w = p.wall.map((r) => r.slice());
   let gain = 0;
   for (let r = 0; r < 5; r++) {
@@ -36,12 +43,13 @@ export function calc(p: Player) {
     for (let i = r + 1; i < 5 && w[i][c]; i++) v++;
     gain += h === 1 && v === 1 ? 1 : (h > 1 ? h : 0) + (v > 1 ? v : 0);
   }
-  const pen = PEN.slice(0, p.floor).reduce((a, b) => a + b, 0);
+  const tiles = floorTiles(p, first);
+  const pen = PEN.slice(0, tiles).reduce((a, b) => a + b, 0);
   const after = Math.max(0, p.score + gain - pen);
-  return { gain, pen, after, delta: after - p.score };
+  return { gain, pen, tiles, after, delta: after - p.score };
 }
 
-/** Bonos de fin de partida. */
+/** Bonos de fin de partida. Solo horizontales, verticales y colores: las diagonales no puntúan. */
 export function bonuses(p: Player) {
   let rows = 0, cols = 0, colors = 0;
   for (let r = 0; r < 5; r++) if (p.wall[r].every(Boolean)) rows++;
@@ -56,8 +64,8 @@ export function bonuses(p: Player) {
 }
 
 /** Cierra la ronda: aplica colocaciones, suelo y reinicia el estado temporal. */
-export function closeRoundFor(p: Player): Player {
-  const r = calc(p);
+export function closeRoundFor(p: Player, first = false): Player {
+  const r = calc(p, first);
   const wall = p.wall.map((row) => row.slice());
   p.pending.forEach((c, i) => {
     if (c >= 0) wall[i][c] = true;
@@ -74,3 +82,36 @@ export function closeRoundFor(p: Player): Player {
 
 export const hasFullRow = (players: Player[]) =>
   players.some((p) => p.wall.some((r) => r.every(Boolean)));
+
+export type Standing = {
+  p: Player;
+  b: ReturnType<typeof bonuses>;
+  total: number;
+  place: number;
+  shared: boolean; // empate no resuelto: comparte el puesto
+};
+
+/**
+ * Clasificación final ordenada. Desempate oficial: más filas horizontales
+ * completas; si persiste, el puesto se comparte.
+ */
+export function standings(players: Player[]): Standing[] {
+  const rows = players.map((p) => {
+    const b = bonuses(p);
+    return { p, b, total: p.score + b.total };
+  });
+  rows.sort((a, z) => z.total - a.total || z.b.rows - a.b.rows);
+
+  const out = rows.map((r, i) => {
+    const prev = rows[i - 1];
+    const same = prev && prev.total === r.total && prev.b.rows === r.b.rows;
+    return { ...r, place: 0, shared: false, _same: !!same };
+  });
+  out.forEach((r, i) => {
+    r.place = i === 0 ? 1 : r._same ? out[i - 1].place : i + 1;
+  });
+  out.forEach((r) => {
+    r.shared = out.filter((o) => o.place === r.place).length > 1;
+  });
+  return out.map(({ _same, ...r }) => r);
+}
