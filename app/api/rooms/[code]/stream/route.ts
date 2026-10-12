@@ -14,6 +14,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const { code: raw } = await ctx.params;
   const code = raw.toUpperCase().trim();
 
+  // Sin pub/sub en el almacén no hay nada que empujar: el cliente sondea.
+  if (!store.push) return new Response('El stream no está disponible', { status: 501 });
+
   const room = await store.get(code);
   if (!room) return new Response('Sala no encontrada', { status: 404 });
 
