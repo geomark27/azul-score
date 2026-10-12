@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import VersionTag from '../../version-tag';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
   MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, roomStandings,
@@ -26,6 +27,7 @@ export default function SalaPage({ params }: { params: Promise<{ code: string }>
         <div className="top"><h1>Azul</h1><span className="round">Sala {code}</span></div>
         <div className="panel"><p className="err" style={{ margin: 0 }}>{live.error}</p></div>
         <Link className="linkbtn" href="/">Volver al inicio</Link>
+        <VersionTag />
       </main>
     );
   }
@@ -35,6 +37,7 @@ export default function SalaPage({ params }: { params: Promise<{ code: string }>
       <main>
         <div className="top"><h1>Azul</h1><span className="round">Sala {code}</span></div>
         <div className="panel"><p className="hint" style={{ margin: 0 }}>Conectando con la sala…</p></div>
+        <VersionTag />
       </main>
     );
   }
@@ -141,6 +144,7 @@ function Entrar({ room, live }: { room: Room; live: ReturnType<typeof useRoom> }
         )}
       </div>
       <Link className="linkbtn" href="/">Volver al inicio</Link>
+      <VersionTag />
     </main>
   );
 }
@@ -187,6 +191,7 @@ function Lobby({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
       <button className="linkbtn" style={{ color: 'var(--muted)' }} onClick={() => live.send({ t: 'leave' })}>
         Salir de la sala
       </button>
+      <VersionTag />
     </main>
   );
 }
@@ -339,6 +344,7 @@ function Juego({
           {mine.ready ? '✓ Listo · toca para corregir' : 'Estoy listo'}
         </button>
       </div></div>
+      <VersionTag />
     </main>
   );
 }
@@ -382,6 +388,7 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
           <button className="btn primary" onClick={() => live.send({ t: 'start' })}>Revancha</button>
         </div></div>
       )}
+      <VersionTag />
     </main>
   );
 }

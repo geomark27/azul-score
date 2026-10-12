@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import VersionTag from '../version-tag';
 import {
   COLORS, PEN, Player, calc, closeRoundFor, colorOf, floorTiles, hasFullRow, newPlayer, standings,
 } from '@/lib/azul';
@@ -148,6 +149,7 @@ export default function Page() {
           <button className="btn primary" style={{ width: '100%', marginTop: 18 }} onClick={start}>Empezar</button>
         </div>
         <Link className="linkbtn" href="/">Jugar cada uno en su móvil</Link>
+        <VersionTag />
       </main>
     );
   }
@@ -185,6 +187,7 @@ export default function Page() {
           <button className="btn" onClick={() => update((d) => { d.view = 'game'; })}>Volver</button>
           <button className="btn primary" onClick={newGame}>{newLabel}</button>
         </div></div>
+        <VersionTag />
       </main>
     );
   }
@@ -287,6 +290,7 @@ export default function Page() {
         <button className="btn" disabled={!s.history.length} onClick={undoRound}>Deshacer ronda</button>
         <button className="btn primary" onClick={closeRound}>Cerrar ronda {s.round}</button>
       </div></div>
+      <VersionTag />
     </main>
   );
 }
