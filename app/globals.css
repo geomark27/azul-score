@@ -100,3 +100,10 @@ main{max-width:480px;margin:0 auto;padding:14px 14px 110px}
 .host-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bar .in.one{grid-template-columns:1fr}
 .ver{text-align:center;color:var(--muted);font-size:12px;margin:22px 0 0;opacity:.7;font-variant-numeric:tabular-nums}
+.ver-btn{background:none;border:none;color:var(--muted);font-size:12px;padding:6px 10px;opacity:.75;font-variant-numeric:tabular-nums;font-family:inherit}
+.ver-btn:hover,.ver-btn[aria-expanded="true"]{opacity:1;text-decoration:underline}
+.ver-info{max-width:260px;margin:2px auto 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:left;font-size:12px}
+.ver-row{display:flex;justify-content:space-between;gap:12px;margin:0 0 4px;color:var(--muted)}
+.ver-row:last-child{margin-bottom:0}
+.ver-row b{color:var(--ink);font-variant-numeric:tabular-nums}
+.ver-warn{margin:8px 0 0;padding-top:8px;border-top:1px solid var(--line);color:var(--bad);font-size:12px;line-height:1.35}
