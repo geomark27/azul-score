@@ -143,6 +143,7 @@ azul-marcador/
 ├── scripts/test.mjs                 # Compila y lanza el runner de Node
 ├── Makefile                         # Desarrollo, calidad, git y releases
 ├── css.d.ts                         # Declara los imports de .css planos
+├── vercel.json                      # Solo despliega los commits de release
 ├── next.config.mjs                  # Inyecta la versión en el bundle
 ├── tsconfig.json                    # strict: true, alias "@/*" a la raíz
 └── package.json                     # Fuente de verdad de la versión
@@ -195,6 +196,50 @@ implementaciones y **se elige sola según el entorno**:
 | --- | --- | --- |
 | Sin variables de entorno | memoria del proceso | SSE (instantáneo) |
 | Con credenciales de Upstash | Redis | sondeo cada 2 s |
+
+### Cuándo despliega Vercel
+
+Por defecto Vercel despliega en **cada push**, y eso consume cuota aunque el
+despliegue no sirva de nada. Aquí los despliegues automáticos están **apagados** y
+solo se lanzan al publicar una versión.
+
+`vercel.json` lo consigue con dos piezas:
+
+```json
+{
+  "git": { "deploymentEnabled": false },
+  "ignoreCommand": "…"
+}
+```
+
+- **`git.deploymentEnabled: false`** es la que importa: Vercel **no crea ningún
+  despliegue** al recibir un push, así que no gasta cuota ni ocupa un slot de build.
+- **`ignoreCommand`** es una red de seguridad: si algún día se reactivan los
+  despliegues automáticos, solo dejaría pasar los commits `release: vX.Y.Z` en `main`.
+  Ojo con su lógica invertida: sale con **1 para construir** y **0 para ignorar**.
+
+El ajuste **Ignored Build Step** del panel puede quedarse en *Automatic*: el
+`vercel.json` lo sobrescribe, y así la regla vive en el repo y no en dos sitios.
+
+### Lanzar un despliegue
+
+Con los automáticos apagados, el despliegue lo dispara un **Deploy Hook**:
+
+1. En Vercel: **Settings → Git → Deploy Hooks**, crea uno para la rama `main`.
+2. Guarda la URL en local — es privada y el `.gitignore` la excluye:
+   ```bash
+   echo 'URL_DEL_HOOK' > .vercel-deploy-hook
+   ```
+
+A partir de ahí, `make release` lo llama solo al terminar. Y para desplegar sin
+publicar versión:
+
+```bash
+make deploy
+```
+
+Si prefieres no guardar el fichero, el hook también se lee de la variable de
+entorno `VERCEL_DEPLOY_HOOK`.
 
 ### Vercel y cualquier otro serverless → hace falta Redis
 

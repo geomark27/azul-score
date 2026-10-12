@@ -60,6 +60,7 @@ help:
 	@echo "    release-major   Bump major  (0.1.0 -> 1.0.0) + tag + push"
 	@echo ""
 	@echo "$(YELLOW)  🩺 Despliegue:$(NC)"
+	@echo "    deploy          Lanza un despliegue en Vercel (Deploy Hook)"
 	@echo "    health URL=...  Consulta /api/health de un despliegue"
 	@echo ""
 	@echo "$(YELLOW)  💡 Ejemplos:$(NC)"
@@ -250,9 +251,11 @@ define do_release
 		echo "$(YELLOW)  (gh no disponible: no se creó el release en GitHub)$(NC)"; \
 	fi; \
 	echo ""; \
+	$(MAKE) --no-print-directory deploy || \
+		echo "$(YELLOW)  El release está publicado; despliega cuando configures el hook.$(NC)"; \
+	echo ""; \
 	echo "$(GREEN)✓ Release $$NEW_TAG completado$(NC)"; \
 	echo "$(CYAN)  https://github.com/$(REPO)/releases/tag/$$NEW_TAG$(NC)"; \
-	echo "$(CYAN)  Vercel desplegará solo al recibir el push.$(NC)"; \
 	echo ""
 endef
 
@@ -271,6 +274,31 @@ release-major:
 # ================================================================
 #  Despliegue
 # ================================================================
+
+# El Deploy Hook es una URL privada: quien la tenga puede lanzar despliegues.
+# Nunca va al repo. Se lee de $$VERCEL_DEPLOY_HOOK o del fichero (ignorado por git).
+HOOK_FILE=.vercel-deploy-hook
+
+.PHONY: deploy
+deploy:
+	@HOOK="$${VERCEL_DEPLOY_HOOK:-$$(cat $(HOOK_FILE) 2>/dev/null)}"; \
+	if [ -z "$$HOOK" ]; then \
+		echo "$(RED)❌ No hay Deploy Hook configurado.$(NC)"; \
+		echo ""; \
+		echo "   1. En Vercel: Settings → Git → Deploy Hooks"; \
+		echo "   2. Crea uno para la rama $(CYAN)main$(NC) y copia la URL"; \
+		echo "   3. Guárdala (queda fuera de git):"; \
+		echo "      $(CYAN)echo 'URL_DEL_HOOK' > $(HOOK_FILE)$(NC)"; \
+		echo ""; \
+		exit 1; \
+	fi; \
+	echo "$(YELLOW)🚀 Pidiendo despliegue a Vercel...$(NC)"; \
+	if curl -fsS -X POST "$$HOOK" -o /dev/null; then \
+		echo "$(GREEN)✓ Despliegue solicitado$(NC)"; \
+	else \
+		echo "$(RED)❌ Vercel no aceptó la petición (¿hook caducado?)$(NC)"; \
+		exit 1; \
+	fi
 
 .PHONY: health
 health:
