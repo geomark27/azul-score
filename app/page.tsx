@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { COLORS, colorOf } from '@/lib/azul';
 import { createRoom, saveName, savedName } from '@/lib/client';
+import { versionLabel } from '@/lib/version';
 
 export default function Home() {
   const router = useRouter();
@@ -84,6 +85,7 @@ export default function Home() {
       </div>
 
       <Link className="linkbtn" href="/local">Jugar todo en este dispositivo</Link>
+      <p className="ver">{versionLabel}</p>
     </main>
   );
 }

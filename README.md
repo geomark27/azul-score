@@ -58,20 +58,62 @@ adicionales**: no usa librerías de UI, estado, tiempo real ni estilos.
 ## Uso en local
 
 ```bash
-npm install
-npm run dev
+make install
+make dev
 ```
 
-Abre <http://localhost:3000>. Para que los demás móviles entren a una sala, todos deben
-poder alcanzar esa dirección (misma red y `npm run dev -- -H 0.0.0.0`, o un despliegue).
+Abre <http://localhost:3000>. Si quieres entrar desde el móvil en la misma red, usa
+`make lan`: escucha en todas las interfaces y te imprime la dirección a la que conectarte.
 
-### Scripts
+`make` sin argumentos lista todos los comandos.
 
-| Script | Descripción |
+### Comandos
+
+| Comando | Descripción |
 | --- | --- |
-| `npm run dev` | Servidor de desarrollo con recarga en caliente |
-| `npm run build` | Compilación de producción |
-| `npm start` | Sirve la compilación de producción (requiere `build` previo) |
+| `make dev` | Servidor de desarrollo (`PORT=3000` por defecto) |
+| `make lan` | Igual, pero accesible desde otros dispositivos de la red |
+| `make build` | Compilación de producción |
+| `make start` | Sirve la compilación (requiere `build` previo) |
+| `make clean` | Borra `.next`, `.tmp` y cachés |
+| `make typecheck` | Comprueba los tipos (`tsc --noEmit`) |
+| `make test` | Pruebas de `lib/` (36 casos sobre puntuación y salas) |
+| `make lint` | `typecheck` + `test` |
+| `make check` | `lint` + `build`: lo mismo que valida un release |
+| `make push m='…'` | Add + commit + push a la rama actual |
+| `make sync m='…'` | Pull + commit + push |
+| `make health URL=…` | Consulta `/api/health` de un despliegue |
+
+Los scripts de npm (`npm run dev`, `build`, `start`, `typecheck`, `test`) siguen
+funcionando: el Makefile solo los envuelve.
+
+---
+
+## Versionado
+
+`package.json` es la fuente de verdad y cada versión publicada tiene su tag `vX.Y.Z`
+en git. La versión viaja al bundle en tiempo de compilación (`next.config.mjs` la
+inyecta como `NEXT_PUBLIC_APP_VERSION`), así que se puede ver en marcha:
+
+- en el pie de la portada, junto al commit: `v0.1.0 · 3acf0da`;
+- en `GET /api/health`, con el resto del diagnóstico.
+
+### Publicar una versión
+
+```bash
+make version         # en qué versión estás y si el tag coincide
+make release         # 0.1.0 -> 0.1.1   corrección
+make release-minor   # 0.1.0 -> 0.2.0   función nueva
+make release-major   # 0.1.0 -> 1.0.0   cambio incompatible
+```
+
+Cada release, en este orden: exige el árbol limpio, pasa `lint`, sube la versión en
+`package.json`, compila (si falla, restaura el `package.json` y aborta), commitea como
+`release: vX.Y.Z`, crea el tag anotado, hace push con `--follow-tags` y publica el
+release en GitHub si hay `gh` autenticado. Vercel despliega solo al recibir el push.
+
+El primer `make release` publica la versión que ya está en `package.json` en vez de
+incrementarla, para que el primer tag sea exactamente `v0.1.0`.
 
 ---
 
@@ -87,17 +129,22 @@ azul-marcador/
 │   ├── api/rooms/route.ts           # POST: crear sala
 │   ├── api/rooms/[code]/route.ts    # GET estado · POST acción
 │   ├── api/rooms/[code]/stream/     # GET: actualizaciones en vivo (SSE)
+│   ├── api/health/route.ts          # Diagnóstico: versión y almacén activo
 │   └── globals.css                  # Estilos (CSS plano, sin framework)
 ├── lib/
 │   ├── azul.ts                      # Puntuación pura: calc, bonuses, standings
 │   ├── room.ts                      # Estado de sala y reglas de permiso (puro)
 │   ├── store.ts                     # Interfaz Store + implementación en memoria
 │   ├── store-upstash.ts             # Implementación en Redis para serverless
-│   └── client.ts                    # Identidad del móvil y hook useRoom
+│   ├── client.ts                    # Identidad del móvil y hook useRoom
+│   └── version.ts                   # Versión y commit del build
+├── tests/                           # Pruebas de azul.ts y room.ts
+├── scripts/test.mjs                 # Compila y lanza el runner de Node
+├── Makefile                         # Desarrollo, calidad, git y releases
 ├── css.d.ts                         # Declara los imports de .css planos
-├── next.config.mjs
+├── next.config.mjs                  # Inyecta la versión en el bundle
 ├── tsconfig.json                    # strict: true, alias "@/*" a la raíz
-└── package.json
+└── package.json                     # Fuente de verdad de la versión
 ```
 
 La lógica vive aislada de React y puede probarse por separado:
