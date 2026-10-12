@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { store } from '@/lib/store';
+import { COMMIT, VERSION } from '@/lib/version';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,8 @@ export async function GET() {
   return NextResponse.json(
     {
       ok,
+      version: VERSION,
+      commit: COMMIT || null,
       almacen: store.name,
       cambiosEnVivo: store.push ? 'SSE' : 'sondeo',
       responde,

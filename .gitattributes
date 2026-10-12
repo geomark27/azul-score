@@ -1,0 +1,11 @@
+# El proyecto se edita desde Windows pero se ejecuta en WSL y en Vercel (Linux).
+# Sin esto, git entrega CRLF en el working tree de Windows y el Makefile deja de
+# funcionar en WSL ("missing separator" / recetas que no se reconocen).
+* text=auto eol=lf
+
+# Binarios: que git no intente normalizarlos nunca.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

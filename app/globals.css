@@ -99,3 +99,4 @@ main{max-width:480px;margin:0 auto;padding:14px 14px 110px}
 .host{margin-top:12px;border-color:var(--accent)}
 .host-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bar .in.one{grid-template-columns:1fr}
+.ver{text-align:center;color:var(--muted);font-size:12px;margin:22px 0 0;opacity:.7;font-variant-numeric:tabular-nums}
