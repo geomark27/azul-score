@@ -1,12 +1,18 @@
 import { Err, Room, isErr } from './room';
+import { upstashStore } from './store-upstash';
 
 /**
- * Contrato de persistencia de salas. La implementación en memoria sirve para
- * un único proceso (next dev / next start). Para desplegar en serverless hay
- * que escribir otra implementación (Supabase, Redis…) y exportarla aquí abajo:
- * nada más del proyecto depende de cuál esté activa.
+ * Contrato de persistencia de salas.
+ *
+ * `memoryStore` vale para un único proceso (next dev / next start / Render).
+ * En serverless cada petición puede atenderla otra instancia, así que la memoria
+ * no sirve: ahí hace falta un almacén externo (`store-upstash.ts`).
  */
 export interface Store {
+  /** `true` si el almacén puede avisar de los cambios (habilita SSE). */
+  readonly push: boolean;
+  /** Nombre del almacén activo, para el diagnóstico de /api/health. */
+  readonly name: 'memoria' | 'redis';
   get(code: string): Promise<Room | null>;
   create(room: Room): Promise<void>;
   /** Lee, aplica `fn` y guarda de forma atómica. Un Err no persiste nada. */
@@ -15,7 +21,8 @@ export interface Store {
   subscribe(code: string, cb: (r: Room) => void): () => void;
 }
 
-const TTL = 12 * 60 * 60 * 1000; // una sala muere 12 h después del último cambio
+/** Una sala muere 12 h después del último cambio. */
+export const TTL_MS = 12 * 60 * 60 * 1000;
 
 type Mem = {
   rooms: Map<string, Room>;
@@ -28,7 +35,7 @@ const g = globalThis as unknown as { __azulStore?: Mem };
 const mem: Mem = (g.__azulStore ??= { rooms: new Map(), subs: new Map(), queue: new Map() });
 
 function sweep() {
-  const cutoff = Date.now() - TTL;
+  const cutoff = Date.now() - TTL_MS;
   for (const [code, room] of mem.rooms)
     if (room.updatedAt < cutoff && !mem.subs.get(code)?.size) mem.rooms.delete(code);
 }
@@ -40,6 +47,9 @@ function emit(room: Room) {
 }
 
 export const memoryStore: Store = {
+  push: true,
+  name: 'memoria',
+
   async get(code) {
     sweep();
     return mem.rooms.get(code) ?? null;
@@ -76,4 +86,8 @@ export const memoryStore: Store = {
   },
 };
 
-export const store: Store = memoryStore;
+/**
+ * Si hay credenciales de Upstash (las inyecta la integración de Vercel), se usa
+ * Redis; si no, la memoria del proceso.
+ */
+export const store: Store = upstashStore ?? memoryStore;

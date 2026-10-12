@@ -9,12 +9,15 @@ type Ctx = { params: Promise<{ code: string }> };
 
 const norm = (c: string) => c.toUpperCase().trim();
 
-/** GET /api/rooms/[code] — estado actual (respaldo si el SSE no llega). */
+/**
+ * GET /api/rooms/[code] — estado actual.
+ * `push` dice si el almacén puede empujar cambios: si no, el cliente sondea.
+ */
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { code } = await ctx.params;
   const room = await store.get(norm(code));
   if (!room) return NextResponse.json({ error: 'Esa sala no existe o ya caducó.' }, { status: 404 });
-  return NextResponse.json({ room });
+  return NextResponse.json({ room, push: store.push });
 }
 
 /** POST /api/rooms/[code] — aplica una acción del jugador. */

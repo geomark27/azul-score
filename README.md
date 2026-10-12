@@ -91,7 +91,8 @@ azul-marcador/
 ├── lib/
 │   ├── azul.ts                      # Puntuación pura: calc, bonuses, standings
 │   ├── room.ts                      # Estado de sala y reglas de permiso (puro)
-│   ├── store.ts                     # Persistencia de salas tras una interfaz
+│   ├── store.ts                     # Interfaz Store + implementación en memoria
+│   ├── store-upstash.ts             # Implementación en Redis para serverless
 │   └── client.ts                    # Identidad del móvil y hook useRoom
 ├── css.d.ts                         # Declara los imports de .css planos
 ├── next.config.mjs
@@ -135,19 +136,45 @@ Igual que antes, eligiendo jugador en la barra superior antes de registrar su ta
 
 ## Despliegue
 
-La partida compartida guarda las salas **en la memoria del proceso del servidor**
-(`lib/store.ts`). Eso funciona mientras haya **un único proceso en marcha**:
+Las salas se guardan tras la interfaz `Store` (`lib/store.ts`), que tiene dos
+implementaciones y **se elige sola según el entorno**:
 
-- `npm start` en un equipo, una Raspberry o un contenedor.
-- Hosts que mantienen el proceso vivo: Render, Railway, Fly.io.
+| | Almacén | Cambios en vivo |
+| --- | --- | --- |
+| Sin variables de entorno | memoria del proceso | SSE (instantáneo) |
+| Con credenciales de Upstash | Redis | sondeo cada 2 s |
 
-**No funciona tal cual en Vercel ni en otro entorno serverless**: cada petición puede
-atenderla una instancia distinta y las salas se perderían entre llamadas. Para desplegar
-ahí hay que escribir otra implementación de la interfaz `Store` (`get`, `create`,
-`mutate`, `subscribe`) contra Supabase, Upstash Redis o similar, y exportarla al final
-de `lib/store.ts`. Nada más del proyecto depende de cuál esté activa.
+### Vercel y cualquier otro serverless → hace falta Redis
 
-El modo `/local` sí funciona en cualquier hosting estático o serverless.
+En serverless **cada petición puede atenderla una instancia distinta**, así que un
+estado en memoria se pierde: a un jugador le sale «esa sala no existe o ya caducó»
+mientras a otro le funciona. Para evitarlo, añade un Redis de Upstash desde el
+*Marketplace* de Vercel (plan gratuito: 500.000 comandos al mes, unas 60 partidas).
+La integración inyecta sola estas variables, y con eso basta:
+
+```
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+```
+
+También sirven las `KV_REST_API_URL` / `KV_REST_API_TOKEN` de Vercel KV. Si están
+presentes, `lib/store-upstash.ts` toma el relevo; si no, se sigue usando la memoria.
+No hay que tocar código ni instalar dependencias: el adaptador habla con la API REST
+de Upstash por `fetch`.
+
+Como la API REST no ofrece pub/sub, con Redis el servidor **no puede empujar** cambios:
+responde `push: false`, el cliente desactiva el SSE y sondea cada 2 s (cada 10 s si la
+pestaña está en segundo plano). Las escrituras simultáneas se resuelven con
+*compare-and-set* sobre `version` mediante un script Lua, así que dos jugadores que
+tocan a la vez no se pisan.
+
+### Hosts con proceso persistente → funciona sin configurar nada
+
+`npm start` en un equipo, una Raspberry, un contenedor, Render o Railway: ahí el store
+en memoria vale y además tienes SSE instantáneo. El único aviso es que si el proceso se
+reinicia o se duerme, las salas abiertas se pierden; con Redis eso tampoco pasa.
+
+El modo `/local` funciona en cualquier sitio, incluido hosting estático.
 
 ---
 

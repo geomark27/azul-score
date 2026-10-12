@@ -5,7 +5,11 @@ import { Action, Room } from './room';
 
 const ID_KEY = 'azul-client-id';
 const NAME_KEY = 'azul-player-name';
-const POLL_MS = 4000; // red de seguridad si el SSE se cae
+
+/** Ritmo de sondeo según lo que pueda hacer el servidor. */
+const POLL_PUSH = 8000; // hay SSE: esto es solo red de seguridad
+const POLL_LIVE = 2000; // sin SSE y mirando la pantalla
+const POLL_IDLE = 10000; // sin SSE y con la pestaña en segundo plano
 
 /** Identidad estable del navegador; es lo que ata a una persona con su asiento. */
 export function clientId(): string {
@@ -42,7 +46,7 @@ async function call(path: string, init?: RequestInit) {
 export const createRoom = (name: string): Promise<{ room: Room }> =>
   call('/api/rooms', { method: 'POST', body: JSON.stringify({ name }) });
 
-export const fetchRoom = (code: string): Promise<{ room: Room }> =>
+export const fetchRoom = (code: string): Promise<{ room: Room; push: boolean }> =>
   call(`/api/rooms/${encodeURIComponent(code)}`);
 
 export const sendAction = (code: string, action: Action): Promise<{ room: Room }> =>
@@ -58,52 +62,87 @@ export type Live = {
   clearActionError: () => void;
 };
 
-/** Suscribe a una sala por SSE, con sondeo de respaldo, y expone `send`. */
+/**
+ * Mantiene la sala al día y expone `send`.
+ *
+ * Si el servidor puede empujar cambios (almacén en memoria), usa SSE y el sondeo
+ * queda de respaldo. Si no puede (Redis por REST, que es el caso en serverless),
+ * sondea cada 2 s mientras se esté mirando la pantalla y cada 10 s si no.
+ */
 export function useRoom(code: string): Live {
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
   const version = useRef(-1);
+  const hasRoom = useRef(false);
 
   // Descarta mensajes que lleguen desordenados (SSE y sondeo compiten).
   const accept = useCallback((r: Room) => {
     if (r.version < version.current) return;
     version.current = r.version;
+    hasRoom.current = true;
     setRoom(r);
     setError(null);
   }, []);
 
   useEffect(() => {
     if (!code) return;
-    let alive = true;
 
-    const es = new EventSource(`/api/rooms/${encodeURIComponent(code)}/stream`);
-    es.addEventListener('room', (e) => {
-      if (!alive) return;
-      setConnected(true);
-      try { accept(JSON.parse((e as MessageEvent).data)); } catch {}
-    });
-    es.addEventListener('ping', () => alive && setConnected(true));
-    es.onopen = () => alive && setConnected(true);
-    es.onerror = () => {
-      if (!alive) return;
-      setConnected(false); // EventSource reconecta solo
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let es: EventSource | null = null;
+    let push = false;
+
+    const delay = () =>
+      push ? POLL_PUSH : document.visibilityState === 'hidden' ? POLL_IDLE : POLL_LIVE;
+
+    const openStream = () => {
+      if (es) return;
+      es = new EventSource(`/api/rooms/${encodeURIComponent(code)}/stream`);
+      es.addEventListener('room', (e) => {
+        if (!alive) return;
+        setConnected(true);
+        try { accept(JSON.parse((e as MessageEvent).data)); } catch {}
+      });
+      es.addEventListener('ping', () => alive && setConnected(true));
+      es.onerror = () => alive && setConnected(false); // EventSource reconecta solo
     };
 
-    const poll = setInterval(() => {
-      fetchRoom(code)
-        .then(({ room: r }) => alive && accept(r))
-        .catch((e: Error) => alive && !room && setError(e.message));
-    }, POLL_MS);
+    const tick = async () => {
+      try {
+        const { room: r, push: p } = await fetchRoom(code);
+        if (!alive) return;
+        accept(r);
+        setConnected(true);
+        if (p) { push = true; openStream(); }
+      } catch (e) {
+        if (!alive) return;
+        setConnected(false);
+        // Solo molestamos con el error si aún no hemos podido cargar la sala:
+        // un sondeo fallido suelto no debe borrar una partida en curso.
+        if (!hasRoom.current) setError((e as Error).message);
+      }
+      if (alive) timer = setTimeout(tick, delay());
+    };
 
-    fetchRoom(code)
-      .then(({ room: r }) => alive && accept(r))
-      .catch((e: Error) => alive && setError(e.message));
+    // Al volver a la pestaña, refrescar ya en vez de esperar al siguiente sondeo.
+    const onVisible = () => {
+      if (!alive || document.visibilityState !== 'visible') return;
+      if (timer) clearTimeout(timer);
+      void tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
-    return () => { alive = false; es.close(); clearInterval(poll); };
-    // `room` se omite a propósito: solo se usa para decidir si mostrar el error.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void tick();
+
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      es?.close();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [code, accept]);
 
   const send = useCallback(
