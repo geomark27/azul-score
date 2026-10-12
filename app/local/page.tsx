@@ -209,7 +209,8 @@ export default function Page() {
           return (
             <button key={i} className="chip" aria-pressed={i === s.active} onClick={() => update((x) => { x.active = i; })}>
               <div className="n">
-                {q.name}
+                <span>{q.name}</span>
+                {i === s.active && <span className="yo">editando</span>}
                 {s.first === i && <span className="tok" title="Tiene la ficha de jugador inicial">1</span>}
               </div>
               <div className="s">{q.score}</div>

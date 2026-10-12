@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VersionTag from '../../version-tag';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
@@ -13,13 +14,46 @@ const sign = (n: number) => (n > 0 ? `+${n}` : String(n));
 const cls = (n: number) => (n > 0 ? 'pos' : n < 0 ? 'neg' : 'zero');
 const ORD = ['1.º', '2.º', '3.º', '4.º'];
 
+/** Segundos que se deja leer el aviso antes de volver solo a la portada. */
+const VUELTA_MS = 2600;
+
 export default function SalaPage({ params }: { params: Promise<{ code: string }> }) {
   const { code: raw } = use(params);
   const code = raw.toUpperCase();
+  const router = useRouter();
   const live = useRoom(code);
   const [me, setMe] = useState<string | null>(null);
 
   useEffect(() => { setMe(clientId()); }, []);
+
+  // Cuando la sala se cierra o desaparece, todos los móviles vuelven solos a
+  // la portada: nadie se queda mirando una pantalla que ya no lleva a ningún lado.
+  const terminada = live.gone || live.room?.view === 'closed';
+  useEffect(() => {
+    if (!terminada) return;
+    const t = setTimeout(() => router.replace('/'), VUELTA_MS);
+    return () => clearTimeout(t);
+  }, [terminada, router]);
+
+  if (terminada) {
+    return (
+      <main>
+        <div className="top"><h1>Azul</h1><span className="round">Sala {code}</span></div>
+        <div className="panel cerrada">
+          <h2>{live.gone ? 'Esta sala ya no existe' : 'El anfitrión cerró la sala'}</h2>
+          <p className="hint">
+            {live.gone
+              ? 'Puede que caducara o que el código no sea correcto.'
+              : 'Gracias por jugar. Te llevamos a la portada…'}
+          </p>
+          <Link className="btn primary" style={{ display: 'block', textAlign: 'center', lineHeight: '48px' }} href="/">
+            Ir a la portada
+          </Link>
+        </div>
+        <VersionTag />
+      </main>
+    );
+  }
 
   if (live.error && !live.room) {
     return (
@@ -220,7 +254,8 @@ function Juego({
           return (
             <div key={i} className={`chip ${i === seat ? 'self' : ''} ${s.ready ? 'ready' : ''}`}>
               <div className="n">
-                {s.name}
+                <span>{s.name}</span>
+                {i === seat && <span className="yo">tú</span>}
                 {room.first === i && <span className="tok" title="Tiene la ficha de jugador inicial">1</span>}
                 {s.clientId === null && <span className="tag off">sin conexión</span>}
               </div>
@@ -355,6 +390,24 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
   const table = roomStandings(room);
   const sharedWin = table.some((r) => r.place === 1 && r.shared);
 
+  // Cerrar la sala echa a todo el mundo: se pide un segundo toque, igual que
+  // «Partida nueva» en el modo de un dispositivo.
+  const [confirmar, setConfirmar] = useState(false);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (temporizador.current) clearTimeout(temporizador.current); }, []);
+
+  const cerrarSala = () => {
+    if (!confirmar) {
+      setConfirmar(true);
+      if (temporizador.current) clearTimeout(temporizador.current);
+      temporizador.current = setTimeout(() => setConfirmar(false), 4000);
+      return;
+    }
+    if (temporizador.current) clearTimeout(temporizador.current);
+    setConfirmar(false);
+    void live.send({ t: 'close_room' });
+  };
+
   return (
     <main>
       <p className="hint">{room.round - 1} rondas jugadas.</p>
@@ -382,11 +435,20 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
         {sharedWin && ' Hay victoria compartida.'}
       </p>
 
-      {host && (
+      {host ? (
         <div className="bar"><div className="in">
-          <button className="btn" onClick={() => live.send({ t: 'reopen' })}>Volver</button>
+          <button
+            className={`btn ${confirmar ? 'danger' : ''}`}
+            onClick={cerrarSala}
+          >
+            {confirmar ? '¿Seguro? Toca otra vez' : 'Cerrar sala'}
+          </button>
           <button className="btn primary" onClick={() => live.send({ t: 'start' })}>Revancha</button>
         </div></div>
+      ) : (
+        <p className="hint esperando">
+          El anfitrión decide si hay revancha o cierra la sala.
+        </p>
       )}
       <VersionTag />
     </main>

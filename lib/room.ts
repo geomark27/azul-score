@@ -13,7 +13,8 @@ export type Seat = {
 export type Room = {
   code: string;
   hostId: string;
-  view: 'lobby' | 'game' | 'final';
+  /** `closed`: el anfitrión cerró la sala; los móviles vuelven a la portada. */
+  view: 'lobby' | 'game' | 'final' | 'closed';
   seats: Seat[];
   round: number;
   starter: number; // asiento que abre la ronda en curso
@@ -35,7 +36,7 @@ export type Action =
   | { t: 'close' }
   | { t: 'undo' }
   | { t: 'finish' }
-  | { t: 'reopen' };
+  | { t: 'close_room' };
 
 /** Error de aplicación: el reducer devuelve esto en vez de lanzar. */
 export type Err = { error: string };
@@ -97,7 +98,7 @@ export function parseAction(raw: unknown): Action | Err {
     case 'ready':
       return { t: 'ready', value: !!a.value };
     case 'leave': case 'start': case 'first': case 'close': case 'undo':
-    case 'finish': case 'reopen':
+    case 'finish': case 'close_room':
       return { t: a.t };
     default:
       return { error: 'Acción desconocida.' };
@@ -113,6 +114,9 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
   const i = seatOf(d, clientId);
   const host = isHost(d, clientId);
   const mine = i >= 0 ? d.seats[i] : null;
+
+  // Una sala cerrada no acepta nada más: es un estado terminal.
+  if (d.view === 'closed') return { error: 'El anfitrión cerró esta sala.' };
 
   const hostOnly = () => (host ? null : { error: 'Solo el anfitrión puede hacer esto.' });
   const seated = () => (mine ? null : { error: 'No estás sentado en esta partida.' });
@@ -241,9 +245,12 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       break;
     }
 
-    case 'reopen': {
+    case 'close_room': {
       const e = hostOnly(); if (e) return e;
-      d.view = 'game';
+      // No se borra la sala: queda marcada para que los demás móviles se
+      // enteren y vuelvan solos a la portada. El TTL la limpia después.
+      d.view = 'closed';
+      d.seats.forEach((s) => { s.ready = false; });
       break;
     }
   }

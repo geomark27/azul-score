@@ -32,6 +32,18 @@ export const saveName = (n: string) => {
   try { localStorage.setItem(NAME_KEY, n); } catch {}
 };
 
+/** Error de red que distingue «la sala ya no está» de un fallo pasajero. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+  /** La sala no existe: caducó o nunca existió. */
+  get gone() {
+    return this.status === 404;
+  }
+}
+
 async function call(path: string, init?: RequestInit) {
   const res = await fetch(path, {
     ...init,
@@ -39,7 +51,7 @@ async function call(path: string, init?: RequestInit) {
     headers: { 'Content-Type': 'application/json', 'x-client-id': clientId(), ...init?.headers },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || 'No se pudo contactar con la sala.');
+  if (!res.ok) throw new ApiError(body?.error || 'No se pudo contactar con la sala.', res.status);
   return body;
 }
 
@@ -56,6 +68,8 @@ export type Live = {
   room: Room | null;
   error: string | null;
   connected: boolean;
+  /** La sala ya no existe en el servidor: caducó o se borró. */
+  gone: boolean;
   /** Error de la última acción enviada, no de la conexión. */
   actionError: string | null;
   send: (a: Action) => Promise<void>;
@@ -73,6 +87,7 @@ export function useRoom(code: string): Live {
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [gone, setGone] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const version = useRef(-1);
@@ -120,8 +135,13 @@ export function useRoom(code: string): Live {
       } catch (e) {
         if (!alive) return;
         setConnected(false);
-        // Solo molestamos con el error si aún no hemos podido cargar la sala:
-        // un sondeo fallido suelto no debe borrar una partida en curso.
+        // Un 404 es definitivo: la sala ya no está y no va a volver.
+        if (e instanceof ApiError && e.gone) {
+          setGone(true);
+          return; // se deja de sondear; la pantalla redirige a la portada
+        }
+        // Un fallo pasajero solo se muestra si aún no cargamos la sala:
+        // no debe borrar una partida en curso.
         if (!hasRoom.current) setError((e as Error).message);
       }
       if (alive) timer = setTimeout(tick, delay());
@@ -152,6 +172,7 @@ export function useRoom(code: string): Live {
         accept(r);
         setActionError(null);
       } catch (e) {
+        if (e instanceof ApiError && e.gone) { setGone(true); return; }
         setActionError((e as Error).message);
       }
     },
@@ -159,7 +180,7 @@ export function useRoom(code: string): Live {
   );
 
   return {
-    room, error, connected, actionError, send,
+    room, error, connected, gone, actionError, send,
     clearActionError: () => setActionError(null),
   };
 }

@@ -177,6 +177,34 @@ describe('desconexiones', () => {
   });
 });
 
+describe('cerrar la sala', () => {
+  it('solo el anfitrión puede cerrarla', () => {
+    const r = partida();
+    falla(act(r, B, { t: 'close_room' }), 'Beto no es el anfitrión');
+  });
+
+  it('deja la sala en estado terminal, sin borrarla', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'close_room' }));
+    assert.equal(r.view, 'closed');
+    assert.equal(r.seats.length, 4, 'se conserva para que los demás se enteren');
+    assert.ok(r.seats.every((s) => !s.ready));
+  });
+
+  it('una sala cerrada no acepta nada más, ni del anfitrión', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'close_room' }));
+    for (const a of [
+      { t: 'start' }, { t: 'finish' }, { t: 'close' }, { t: 'undo' },
+      { t: 'tap', r: 0, c: 0 }, { t: 'floor', delta: 1 }, { t: 'first' },
+      { t: 'ready', value: true }, { t: 'join', name: 'Evo' }, { t: 'close_room' },
+    ] as Action[]) {
+      falla(act(r, A, a), `${a.t} tras cerrar`);
+      falla(act(r, E, a), `${a.t} de un extraño tras cerrar`);
+    }
+  });
+});
+
 describe('final y revancha', () => {
   it('ordena el podio y permite volver a jugar con los mismos', () => {
     let r = partida();

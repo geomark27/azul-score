@@ -1,4 +1,8 @@
-export const COLORS = ['#2f62c4', '#e9b824', '#cf4638', '#2a2a33', '#79c5d6'];
+/**
+ * Los cinco colores de Azul, en el orden que espera `colorOf`.
+ * Valores de docs/azul-propuesta-mobile-first.md.
+ */
+export const COLORS = ['#1765E8', '#F4BD27', '#E5483F', '#30323B', '#65C7D7'];
 export const PEN = [1, 1, 2, 2, 2, 3, 3];
 
 export type Player = {
