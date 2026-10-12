@@ -46,7 +46,8 @@ adicionales**: no usa librerías de UI, estado, tiempo real ni estilos.
 - Marcar **«estoy listo»**; el anfitrión ve cuántos faltan antes de cerrar la ronda.
 - **Reconexión**: si a alguien se le cierra el navegador, su asiento queda reservado y
   puede retomarlo con sus puntos intactos. Si se va el anfitrión, otro toma el relevo.
-- **Revancha** conservando a los mismos jugadores.
+- **Revancha** conservando a los mismos jugadores, o **cerrar la sala**: al cerrarla,
+  todos los móviles vuelven solos a la portada en vez de quedarse en una pantalla muerta.
 
 ---
 
@@ -174,6 +175,10 @@ La lógica vive aislada de React y puede probarse por separado:
    la ficha del centro, pulsa **Ficha de jugador inicial**. Al terminar, **Estoy listo**.
 5. El anfitrión pulsa **Cerrar ronda N** cuando estén todos.
 6. Tras la última ronda, el anfitrión pulsa **Terminar y sumar bonos**.
+7. En el resultado solo quedan dos salidas, y las decide el anfitrión:
+   **Revancha** (mismos jugadores, tableros a cero) o **Cerrar sala** (a dos toques,
+   porque echa a todo el mundo). Al cerrarla, todos los móviles vuelven solos a la
+   portada; lo mismo ocurre si la sala caduca.
 
 ### Un solo dispositivo
 
