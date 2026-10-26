@@ -49,6 +49,8 @@ help:
 	@echo "$(YELLOW)  📦 Git ($(BRANCH)):$(NC)"
 	@echo "    push m='msg'    Agrega, commitea y pushea a origin/$(BRANCH)"
 	@echo "    pull            Hace pull desde origin/$(BRANCH)"
+	@echo "    actualizar      Cambia a develop y la trae al día desde origin"
+	@echo "    actualizar rama=...  Igual, con otra rama (main, feat/…)"
 	@echo "    sync m='msg'    Pull + commit + push en un solo paso"
 	@echo "    status          Muestra el estado del repositorio"
 	@echo "    log             Muestra los últimos commits"
@@ -70,6 +72,7 @@ help:
 	@echo "$(YELLOW)  💡 Ejemplos:$(NC)"
 	@echo "    make dev"
 	@echo "    make lan                      # para entrar desde el móvil"
+	@echo "    make actualizar rama=main     # ir a main y traerla al día"
 	@echo "    make push m='fix: corrijo el suelo'"
 	@echo "    make release-preview          # mirar antes de publicar"
 	@echo "    make release                  # elige el tipo en un menú"
@@ -158,6 +161,13 @@ pull:
 	@git fetch origin
 	@git pull origin $(BRANCH)
 	@echo "$(GREEN)✓ Pull completado!$(NC)"
+
+# Rama para «make actualizar»: por defecto develop, que es donde se integra todo.
+rama?=develop
+
+.PHONY: actualizar
+actualizar:
+	@bash scripts/actualizar-rama.sh "$(rama)"
 
 .PHONY: sync
 sync:
