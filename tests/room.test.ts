@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { calc } from '../lib/azul';
 import {
-  Action, MAX_SEATS, Room, apply, isErr, newCode, newRoom, parseAction, roomStandings,
+  Action, MAX_SEATS, Room, apply, codeFromScan, isErr, newCode, newRoom, parseAction, roomStandings,
 } from '../lib/room';
 
 const ok = (r: Room | { error: string }): Room => {
@@ -32,6 +32,19 @@ describe('código de sala', () => {
       assert.match(c, /^[A-Z0-9]{4}$/);
       assert.ok(!/[01I5OS]/.test(c), `código ambiguo: ${c}`);
     }
+  });
+
+  it('se saca del enlace del QR o del código suelto', () => {
+    assert.equal(codeFromScan('https://azul-score.vercel.app/sala/AB7K'), 'AB7K');
+    assert.equal(codeFromScan('http://192.168.1.20:3000/sala/ab7k?x=1'), 'AB7K');
+    assert.equal(codeFromScan('  ab7k '), 'AB7K');
+  });
+
+  it('ignora lo que no es una sala', () => {
+    assert.equal(codeFromScan('https://ejemplo.com/otra/cosa'), null);
+    assert.equal(codeFromScan('https://ejemplo.com/sala/ABCDE'), null);
+    assert.equal(codeFromScan('AB0K'), null); // el 0 nunca sale en un código
+    assert.equal(codeFromScan(''), null);
   });
 });
 

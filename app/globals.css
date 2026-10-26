@@ -261,6 +261,13 @@ main{
 .res td{padding:3px 0}
 .res td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .res .tot td{border-top:1px solid var(--line);font-weight:800;font-size:18px;padding-top:var(--s2)}
+/* Lo que se llevó el suelo: dato curioso, por debajo del total real */
+.posible{
+  margin:var(--s3) 0 0;padding:var(--s2) var(--s3);border-radius:var(--r-sm);
+  background:var(--sunk);color:var(--muted);font-size:13px;
+}
+.posible b{color:var(--ink);font-variant-numeric:tabular-nums}
+.posible .neg{font-weight:600}
 .crown{font-size:13px;font-weight:700;color:var(--accent)}
 .place{display:inline-block;min-width:40px;font-size:14px;font-weight:800;color:var(--muted);font-family:system-ui,sans-serif}
 .place.p1{color:var(--accent)}
@@ -285,6 +292,30 @@ main{
   text-align:center;padding:var(--s4) 0 var(--s4) .18em;
   background:var(--sunk);border-radius:var(--r-md);margin:var(--s1) 0 var(--s4);
 }
+/* QR de la sala: siempre sobre blanco, también en tema oscuro */
+.qr{margin:0 0 var(--s4);text-align:center}
+.qr svg{
+  display:block;width:min(220px,64vw);height:auto;margin:0 auto var(--s2);
+  border-radius:var(--r-md);border:1px solid var(--line);
+}
+.qr .hint{margin:0}
+
+/* Escáner a pantalla completa */
+.scan{
+  position:fixed;inset:0;z-index:20;background:#000;color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s4);
+  padding:calc(var(--s4) + env(safe-area-inset-top,0px)) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom,0px));
+}
+.scan-box{position:relative;width:min(100%,420px);aspect-ratio:1;border-radius:var(--r-lg);overflow:hidden;background:#111}
+.scan-box video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-frame{
+  position:absolute;inset:14%;border:3px solid rgba(255,255,255,.9);border-radius:var(--r-md);
+  box-shadow:0 0 0 999px rgba(0,0,0,.35);
+}
+.scan-msg{margin:0;max-width:420px;text-align:center;font-size:15px;color:rgba(255,255,255,.85)}
+.scan-msg.err{color:#FF8A80}
+.scan .btn{min-width:160px;background:#222;border-color:#444;color:#fff}
+
 .code-in{
   text-transform:uppercase;letter-spacing:.3em;text-align:center;
   font-size:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;

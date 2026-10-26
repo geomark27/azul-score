@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { COLORS, colorOf } from '@/lib/azul';
 import { createRoom, saveName, savedName } from '@/lib/client';
 import VersionTag from './version-tag';
+import QrScanner from './qr-scanner';
 
 export default function Home() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function Home() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scan, setScan] = useState(false);
 
   useEffect(() => { setName(savedName()); }, []);
 
@@ -32,6 +34,11 @@ export default function Home() {
     e.preventDefault();
     const c = code.toUpperCase().trim();
     if (c.length !== 4) { setError('El código tiene 4 caracteres.'); return; }
+    goTo(c);
+  };
+
+  const goTo = (c: string) => {
+    setScan(false);
     setBusy('join');
     saveName(name.trim());
     router.push(`/sala/${c}`);
@@ -69,6 +76,13 @@ export default function Home() {
 
         <div className="sep"><span>o únete a una</span></div>
 
+        <button
+          className="btn" style={{ width: '100%', marginTop: 12 }}
+          disabled={busy !== null} onClick={() => { setError(null); setScan(true); }}
+        >
+          Escanear QR de la sala
+        </button>
+
         <form onSubmit={join}>
           <label htmlFor="cd">Código de sala</label>
           <input
@@ -86,6 +100,7 @@ export default function Home() {
 
       <Link className="linkbtn" href="/local">Jugar todo en este dispositivo</Link>
       <VersionTag />
+      {scan && <QrScanner onCode={goTo} onClose={() => setScan(false)} />}
     </main>
   );
 }
