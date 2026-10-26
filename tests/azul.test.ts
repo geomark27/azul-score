@@ -115,6 +115,34 @@ describe('cierre de ronda', () => {
     assert.equal(out.floor, 0);
     assert.equal(out.log.length, 1);
   });
+
+  it('acumula lo que se llevó el suelo', () => {
+    let p = newPlayer('A');
+    p.score = 10;
+    p.floor = 3; // −4
+    p = closeRoundFor(p, true); // con la ficha: −6
+    assert.equal(p.score, 4);
+    assert.equal(p.lost, 6);
+    p.floor = 1; // −1
+    p = closeRoundFor(p);
+    assert.equal(p.lost, 7);
+  });
+
+  it('solo cuenta como perdido lo que se pierde sin bajar de cero', () => {
+    const p = newPlayer('A');
+    p.score = 1;
+    p.pending[0] = 0; // +1
+    p.floor = 7; // −14, pero solo hay 2 que perder
+    assert.equal(closeRoundFor(p).lost, 2);
+  });
+
+  it('tolera jugadores guardados sin el campo', () => {
+    const p = newPlayer('A');
+    delete p.lost;
+    p.floor = 1;
+    p.score = 5;
+    assert.equal(closeRoundFor(p).lost, 1);
+  });
 });
 
 describe('clasificación final', () => {
@@ -142,5 +170,17 @@ describe('clasificación final', () => {
     assert.deepEqual(t.map((s) => s.place), [1, 1, 3]);
     assert.ok(t[0].shared && t[1].shared);
     assert.equal(t[2].shared, false);
+  });
+
+  it('calcula el total posible sin el suelo y el puesto que daría', () => {
+    const ana = conPuntos('Ana', 50, 1); // 52 con el bono
+    ana.lost = 12;
+    const t = standings([ana, conPuntos('Beto', 60), conPuntos('Caro', 55)]);
+    const a = t.find((s) => s.p.name === 'Ana')!;
+    assert.equal(a.place, 3);
+    assert.equal(a.lost, 12);
+    assert.equal(a.potential, 64);
+    assert.equal(a.potentialPlace, 1);
+    assert.equal(t[0].potentialPlace, 1); // sin pérdidas, el puesto no cambia
   });
 });

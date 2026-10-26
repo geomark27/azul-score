@@ -12,6 +12,12 @@ export type Player = {
   pending: number[]; // columna elegida por fila en la ronda actual (-1 = ninguna)
   floor: number;
   log: number[];
+  /**
+   * Puntos que el suelo le quitó de verdad en toda la partida. Si la
+   * penalización habría bajado de 0, solo cuenta lo que se llegó a perder.
+   * Puede faltar en partidas guardadas antes de existir el campo.
+   */
+  lost?: number;
 };
 
 export const colorOf = (r: number, c: number) => (((c - r) % 5) + 5) % 5;
@@ -23,6 +29,7 @@ export const newPlayer = (name: string): Player => ({
   pending: [-1, -1, -1, -1, -1],
   floor: 0,
   log: [],
+  lost: 0,
 });
 
 /** Azulejos en el suelo contando la ficha de jugador inicial, que también ocupa espacio. */
@@ -79,6 +86,7 @@ export function closeRoundFor(p: Player, first = false): Player {
     wall,
     score: r.after,
     log: [...p.log, r.delta],
+    lost: (p.lost ?? 0) + (p.score + r.gain - r.after),
     pending: [-1, -1, -1, -1, -1],
     floor: 0,
   };
@@ -91,6 +99,10 @@ export type Standing = {
   p: Player;
   b: ReturnType<typeof bonuses>;
   total: number;
+  lost: number; // puntos que se llevó el suelo en toda la partida
+  potential: number; // el total que habría tenido sin el suelo
+  /** Puesto con `potential` frente a los totales reales de los demás. */
+  potentialPlace: number;
   place: number;
   shared: boolean; // empate no resuelto: comparte el puesto
 };
@@ -102,14 +114,17 @@ export type Standing = {
 export function standings(players: Player[]): Standing[] {
   const rows = players.map((p) => {
     const b = bonuses(p);
-    return { p, b, total: p.score + b.total };
+    const total = p.score + b.total;
+    const lost = p.lost ?? 0;
+    return { p, b, total, lost, potential: total + lost };
   });
   rows.sort((a, z) => z.total - a.total || z.b.rows - a.b.rows);
 
   const out = rows.map((r, i) => {
     const prev = rows[i - 1];
     const same = prev && prev.total === r.total && prev.b.rows === r.b.rows;
-    return { ...r, place: 0, shared: false, _same: !!same };
+    const potentialPlace = 1 + rows.filter((o) => o !== r && o.total > r.potential).length;
+    return { ...r, potentialPlace, place: 0, shared: false, _same: !!same };
   });
   out.forEach((r, i) => {
     r.place = i === 0 ? 1 : r._same ? out[i - 1].place : i + 1;
