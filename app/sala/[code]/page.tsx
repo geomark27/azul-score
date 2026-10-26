@@ -4,6 +4,7 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VersionTag from '../../version-tag';
+import SalaQr from '../../sala-qr';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
   MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, roomStandings,
@@ -191,8 +192,9 @@ function Lobby({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
     <main>
       <div className="panel">
         <h2>Esperando jugadores</h2>
-        <p className="hint">Comparte este código para que entren desde su móvil:</p>
+        <p className="hint">Comparte este código o el QR para que entren desde su móvil:</p>
         <div className="code-big">{room.code}</div>
+        <SalaQr code={room.code} />
 
         <ul className="seats">
           {room.seats.map((s, i) => (

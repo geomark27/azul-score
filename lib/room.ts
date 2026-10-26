@@ -52,6 +52,19 @@ export function newCode(rnd: () => number = Math.random) {
   return s;
 }
 
+/**
+ * Saca el código de sala de lo que lea el escáner: el enlace del QR
+ * (`https://…/sala/ABCD`) o el código suelto. Solo se usa el código, así que
+ * un QR ajeno nunca lleva a otra web.
+ */
+export function codeFromScan(text: string): string | null {
+  const t = text.trim();
+  const m = /\/sala\/([A-Za-z0-9]{4})(?:[/?#]|$)/.exec(t) ?? /^([A-Za-z0-9]{4})$/.exec(t);
+  if (!m) return null;
+  const code = m[1].toUpperCase();
+  return [...code].every((ch) => ALPHABET.includes(ch)) ? code : null;
+}
+
 export const cleanName = (n: unknown) =>
   typeof n === 'string' ? n.replace(/\s+/g, ' ').trim().slice(0, 14) : '';
 
