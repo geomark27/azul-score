@@ -413,7 +413,7 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
   return (
     <main>
       <p className="hint">{room.round - 1} rondas jugadas.</p>
-      {table.map(({ p, b, total, place, shared }, i) => (
+      {table.map(({ p, b, total, lost, potential, potentialPlace, place, shared }, i) => (
         <section key={i} className={`panel res ${place === 1 ? 'win' : ''}`}>
           <h2>
             <span className={`place p${place}`}>{ORD[place - 1]}</span> {p.name}
@@ -429,6 +429,14 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
               <tr className="tot"><td>Total</td><td>{total}</td></tr>
             </tbody>
           </table>
+          <p className="posible">
+            {lost > 0 ? (
+              <>
+                Sin el suelo: <b>{potential}</b> <span className="neg">(−{lost} perdidos)</span>
+                {potentialPlace < place && <> · habría quedado <b>{ORD[potentialPlace - 1]}</b></>}
+              </>
+            ) : 'Ni un punto perdido en el suelo.'}
+          </p>
         </section>
       ))}
 

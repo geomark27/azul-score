@@ -261,6 +261,13 @@ main{
 .res td{padding:3px 0}
 .res td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .res .tot td{border-top:1px solid var(--line);font-weight:800;font-size:18px;padding-top:var(--s2)}
+/* Lo que se llevó el suelo: dato curioso, por debajo del total real */
+.posible{
+  margin:var(--s3) 0 0;padding:var(--s2) var(--s3);border-radius:var(--r-sm);
+  background:var(--sunk);color:var(--muted);font-size:13px;
+}
+.posible b{color:var(--ink);font-variant-numeric:tabular-nums}
+.posible .neg{font-weight:600}
 .crown{font-size:13px;font-weight:700;color:var(--accent)}
 .place{display:inline-block;min-width:40px;font-size:14px;font-weight:800;color:var(--muted);font-family:system-ui,sans-serif}
 .place.p1{color:var(--accent)}
