@@ -49,15 +49,21 @@ help:
 	@echo "$(YELLOW)  📦 Git ($(BRANCH)):$(NC)"
 	@echo "    push m='msg'    Agrega, commitea y pushea a origin/$(BRANCH)"
 	@echo "    pull            Hace pull desde origin/$(BRANCH)"
+	@echo "    actualizar      Cambia a develop y la trae al día desde origin"
+	@echo "    actualizar rama=...  Igual, con otra rama (main, feat/…)"
 	@echo "    sync m='msg'    Pull + commit + push en un solo paso"
 	@echo "    status          Muestra el estado del repositorio"
 	@echo "    log             Muestra los últimos commits"
 	@echo ""
 	@echo "$(YELLOW)  🚀 Versionado & Release:$(NC)"
-	@echo "    version         Ver la versión actual y el último tag"
-	@echo "    release         Bump patch  (0.1.0 -> 0.1.1) + tag + push"
-	@echo "    release-minor   Bump minor  (0.1.0 -> 0.2.0) + tag + push"
-	@echo "    release-major   Bump major  (0.1.0 -> 1.0.0) + tag + push"
+	@echo "    version           Ver la versión actual y el último tag"
+	@echo "    release-preview   Qué entraría en la versión y qué tipo se sugiere"
+	@echo "    release           Pregunta el tipo (patch, minor o major) y publica"
+	@echo "    release tipo=...  Igual, sin preguntar el tipo"
+	@echo "    release-patch     0.1.0 -> 0.1.1   correcciones y retoques"
+	@echo "    release-minor     0.1.0 -> 0.2.0   funciones nuevas"
+	@echo "    release-major     0.1.0 -> 1.0.0   cambios incompatibles"
+	@echo "    (los releases salen de main y dejan develop al día)"
 	@echo ""
 	@echo "$(YELLOW)  🩺 Despliegue:$(NC)"
 	@echo "    deploy          Lanza un despliegue en Vercel (Deploy Hook)"
@@ -66,8 +72,10 @@ help:
 	@echo "$(YELLOW)  💡 Ejemplos:$(NC)"
 	@echo "    make dev"
 	@echo "    make lan                      # para entrar desde el móvil"
+	@echo "    make actualizar rama=main     # ir a main y traerla al día"
 	@echo "    make push m='fix: corrijo el suelo'"
-	@echo "    make release-minor"
+	@echo "    make release-preview          # mirar antes de publicar"
+	@echo "    make release                  # elige el tipo en un menú"
 	@echo "    make health URL=https://azul-score.vercel.app"
 	@echo ""
 
@@ -154,6 +162,13 @@ pull:
 	@git pull origin $(BRANCH)
 	@echo "$(GREEN)✓ Pull completado!$(NC)"
 
+# Rama para «make actualizar»: por defecto develop, que es donde se integra todo.
+rama?=develop
+
+.PHONY: actualizar
+actualizar:
+	@bash scripts/actualizar-rama.sh "$(rama)"
+
 .PHONY: sync
 sync:
 	@if [ -z "$(m)" ]; then \
@@ -199,77 +214,27 @@ version:
 	fi; \
 	echo ""
 
-# $(1) = parte a subir: major | minor | patch
-define do_release
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "$(RED)❌ Hay cambios sin commitear. Commitea o descarta antes de publicar.$(NC)"; \
-		git status --short; \
-		exit 1; \
-	fi
-	@$(MAKE) --no-print-directory lint
-	@CUR=$$(git describe --tags --abbrev=0 2>/dev/null); \
-	NEW=$$(node -e "const v=require('./package.json').version; \
-		if (!process.argv[1]) { console.log(v); process.exit(0); } \
-		const [a,b,c]=v.split('.').map(Number); const p='$(1)'; \
-		console.log(p==='major'?[a+1,0,0].join('.'):p==='minor'?[a,b+1,0].join('.'):[a,b,c+1].join('.'))" \
-		"$$CUR"); \
-	NEW_TAG=v$$NEW; \
-	echo ""; \
-	echo "$(CYAN)╔════════════════════════════════════════════════════════════╗$(NC)"; \
-	echo "$(CYAN)║                  RELEASE - INICIANDO                       ║$(NC)"; \
-	echo "$(CYAN)╚════════════════════════════════════════════════════════════╝$(NC)"; \
-	echo ""; \
-	if [ -z "$$CUR" ]; then \
-		echo "$(YELLOW)  Sin tags previos: se publica la versión de package.json$(NC)"; \
-	else \
-		echo "$(YELLOW)  Versión actual : $$CUR$(NC)"; \
-	fi; \
-	echo "$(GREEN)  Nueva versión  : $$NEW_TAG$(NC)"; \
-	echo ""; \
-	if git rev-parse "$$NEW_TAG" >/dev/null 2>&1; then \
-		echo "$(RED)❌ El tag $$NEW_TAG ya existe.$(NC)"; exit 1; \
-	fi; \
-	echo "$(YELLOW)[1/4]$(NC) Subiendo la versión en package.json..."; \
-	node -e "const f='package.json',fs=require('fs'); \
-		const j=JSON.parse(fs.readFileSync(f)); j.version='$$NEW'; \
-		fs.writeFileSync(f, JSON.stringify(j,null,2)+'\n')"; \
-	echo "$(YELLOW)[2/4]$(NC) Compilando con la versión nueva..."; \
-	npm run build >/dev/null || { git checkout -- package.json; \
-		echo "$(RED)❌ La compilación falló; package.json restaurado.$(NC)"; exit 1; }; \
-	echo "$(YELLOW)[3/4]$(NC) Commiteando y creando el tag..."; \
-	git add package.json; \
-	git commit -q -m "release: $$NEW_TAG"; \
-	git tag -a $$NEW_TAG -m "Release $$NEW_TAG"; \
-	echo "$(YELLOW)[4/4]$(NC) Subiendo a GitHub..."; \
-	git push -q origin $(BRANCH) --follow-tags; \
-	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then \
-		if [ -n "$$CUR" ]; then NOTES=$$(git log $$CUR..$$NEW_TAG --oneline --no-merges); \
-		else NOTES="Primera versión publicada."; fi; \
-		gh release create $$NEW_TAG --title "$$NEW_TAG" --notes "$$NOTES" \
-			>/dev/null && echo "$(GREEN)✓ Release publicado en GitHub$(NC)"; \
-	else \
-		echo "$(YELLOW)  (gh no disponible: no se creó el release en GitHub)$(NC)"; \
-	fi; \
-	echo ""; \
-	$(MAKE) --no-print-directory deploy || \
-		echo "$(YELLOW)  El release está publicado; despliega cuando configures el hook.$(NC)"; \
-	echo ""; \
-	echo "$(GREEN)✓ Release $$NEW_TAG completado$(NC)"; \
-	echo "$(CYAN)  https://github.com/$(REPO)/releases/tag/$$NEW_TAG$(NC)"; \
-	echo ""
-endef
+# La lógica vive en scripts/release.sh: comprueba que estás en main al día con
+# origin, pasa typecheck y pruebas, sube la versión, compila, crea commit y tag,
+# publica el release en GitHub, pone develop al día y despliega.
+# Tipo para «make release»: patch | minor | major. Vacío = pregunta con un menú.
+tipo?=
 
-.PHONY: release
+.PHONY: release release-patch release-minor release-major release-preview
 release:
-	$(call do_release,patch)
+	@bash scripts/release.sh $(tipo)
 
-.PHONY: release-minor
+release-patch:
+	@bash scripts/release.sh patch
+
 release-minor:
-	$(call do_release,minor)
+	@bash scripts/release.sh minor
 
-.PHONY: release-major
 release-major:
-	$(call do_release,major)
+	@bash scripts/release.sh major
+
+release-preview:
+	@bash scripts/release.sh $(tipo) --dry-run
 
 # ================================================================
 #  Despliegue
