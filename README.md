@@ -83,6 +83,7 @@ Abre <http://localhost:3000>. Si quieres entrar desde el móvil en la misma red,
 | `make check` | `lint` + `build`: lo mismo que valida un release |
 | `make push m='…'` | Add + commit + push a la rama actual |
 | `make sync m='…'` | Pull + commit + push |
+| `make actualizar [rama=…]` | Cambia a la rama (`develop` por defecto) y la trae al día desde `origin`, explicando cualquier fallo |
 | `make health URL=…` | Consulta `/api/health` de un despliegue |
 
 Los scripts de npm (`npm run dev`, `build`, `start`, `typecheck`, `test`) siguen
