@@ -101,17 +101,36 @@ inyecta como `NEXT_PUBLIC_APP_VERSION`), así que se puede ver en marcha:
 
 ### Publicar una versión
 
+El trabajo va `feat/*` → PR → `develop` → PR → `main`, y los releases salen siempre
+de `main`, que es lo único que despliega Vercel.
+
 ```bash
-make version         # en qué versión estás y si el tag coincide
-make release         # 0.1.0 -> 0.1.1   corrección
-make release-minor   # 0.1.0 -> 0.2.0   función nueva
-make release-major   # 0.1.0 -> 1.0.0   cambio incompatible
+make version                # en qué versión estás y si el tag coincide
+make release-preview        # qué entraría y qué tipo se sugiere (no toca nada)
+make release                # menú: elige patch, minor o major
+make release tipo=minor     # igual, sin menú
+make release-patch          # 0.1.0 -> 0.1.1   correcciones y retoques
+make release-minor          # 0.1.0 -> 0.2.0   funciones nuevas
+make release-major          # 0.1.0 -> 1.0.0   cambios incompatibles
 ```
 
-Cada release, en este orden: exige el árbol limpio, pasa `lint`, sube la versión en
-`package.json`, compila (si falla, restaura el `package.json` y aborta), commitea como
-`release: vX.Y.Z`, crea el tag anotado, hace push con `--follow-tags` y publica el
-release en GitHub si hay `gh` autenticado. Vercel despliega solo al recibir el push.
+El menú sugiere el tipo según los commits desde el último tag: `feat:` → minor,
+`feat!:` o `BREAKING CHANGE` → major, el resto → patch. `release-preview` funciona
+desde cualquier rama, así que sirve para mirar desde `develop` antes de abrir la PR.
+
+Cada release (`scripts/release.sh`), en este orden:
+
+1. Exige estar en `main`, con el árbol limpio y al día con `origin/main`, y que haya
+   commits desde el último tag.
+2. Pasa typecheck y pruebas.
+3. Sube la versión en `package.json` y `package-lock.json` (`npm version`).
+4. Compila; si falla, restaura ambos ficheros y enseña el final del log.
+5. Commitea `release: vX.Y.Z`, crea el tag anotado con las notas y hace push.
+6. Publica el release en GitHub (si hay `gh`) con las notas agrupadas en
+   Novedades / Correcciones / Otros cambios y el enlace de comparación.
+7. Adelanta `develop` hasta `main` para que tenga el commit de release. Si `develop`
+   ya tiene trabajo nuevo, no lo toca y dice cómo mergear.
+8. Lanza el Deploy Hook de Vercel.
 
 El primer `make release` publica la versión que ya está en `package.json` en vez de
 incrementarla, para que el primer tag sea exactamente `v0.1.0`.
@@ -141,6 +160,7 @@ azul-marcador/
 │   └── version.ts                   # Versión y commit del build
 ├── tests/                           # Pruebas de azul.ts y room.ts
 ├── scripts/test.mjs                 # Compila y lanza el runner de Node
+├── scripts/release.sh               # Publica una versión (make release)
 ├── Makefile                         # Desarrollo, calidad, git y releases
 ├── css.d.ts                         # Declara los imports de .css planos
 ├── vercel.json                      # Solo despliega los commits de release
