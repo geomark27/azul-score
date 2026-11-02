@@ -4,7 +4,7 @@ branch: fix/actualizar-sigpipe
 type: fix
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#17"
 version: unreleased
 ---
 
