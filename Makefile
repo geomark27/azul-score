@@ -58,6 +58,7 @@ help:
 	@echo "$(YELLOW)  📓 Bitácora (docs/bitacora):$(NC)"
 	@echo "    bitacora        Crea la entrada de la rama actual"
 	@echo "    bitacora t='…'  Igual, con título"
+	@echo "    bitacora-check  Valida la entrada de la rama (lo mismo que pide la PR)"
 	@echo ""
 	@echo "$(YELLOW)  🚀 Versionado & Release:$(NC)"
 	@echo "    version           Ver la versión actual y el último tag"
@@ -206,12 +207,17 @@ log:
 #  Bitácora
 # ================================================================
 
-# Una entrada por rama en docs/bitacora/entradas/. El release las cierra.
+# Una entrada por rama en docs/bitacora/entries/. El release las cierra.
+# Usa la skill devlog copiada en el repo; configuración en .devlog.conf.
+DEVLOG=.claude/skills/devlog/scripts
 t?=
 
-.PHONY: bitacora
+.PHONY: bitacora bitacora-check
 bitacora:
-	@bash scripts/bitacora.sh "$(t)"
+	@bash $(DEVLOG)/new-entry.sh $(if $(t),"$(t)")
+
+bitacora-check:
+	@bash $(DEVLOG)/verify.sh --base develop
 
 # ================================================================
 #  Versionado & Release

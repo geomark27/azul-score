@@ -114,49 +114,25 @@ notas() {
 NOTAS=$(notas)
 
 # ---------------------------------------------------------------- bitácora
-# Las entradas con «version: pendiente» son las que salen en esta versión.
-# Al publicar se genera docs/bitacora/releases/vX.Y.Z.md, se les pone la
-# versión y se añade una fila al índice. Todo entra en el commit de release.
+# Las entradas con «version: unreleased» son las que salen en esta versión.
+# Al publicar, la skill devlog (copiada en .claude/skills/devlog) genera
+# docs/bitacora/releases/vX.Y.Z.md, les pone la versión y añade la fila al
+# índice. Todo entra en el commit de release. Configuración: .devlog.conf.
 
 BITACORA=docs/bitacora
-mapfile -t PENDIENTES < <(grep -lx 'version: pendiente' "$BITACORA"/entradas/*.md 2>/dev/null || true)
+DEVLOG=.claude/skills/devlog/scripts
+[ -x "$DEVLOG/close-release.sh" ] || falla "Falta la skill devlog en $DEVLOG."
+mapfile -t PENDIENTES < <(grep -lx 'version: unreleased' "$BITACORA"/entries/*.md 2>/dev/null || true)
 
 titulo_entrada() { sed -n 's/^# //p' "$1" | head -n1; }
 
 escribir_bitacora() {
-  local f="$BITACORA/releases/v$NUEVA.md" e hoy fila tmp
-  hoy=$(date +%F)
-  mkdir -p "$BITACORA/releases"
-  {
-    printf -- '---\nversion: v%s\nfecha: %s\ntipo: %s\nanterior: %s\n---\n\n# v%s\n\n' \
-      "$NUEVA" "$hoy" "${TIPO:-inicial}" "${ULTIMO:-ninguna}" "$NUEVA"
-    printf '## Entradas de bitácora\n\n'
-    if [ "${#PENDIENTES[@]}" -gt 0 ]; then
-      for e in "${PENDIENTES[@]}"; do
-        printf -- '- [%s](../entradas/%s)\n' "$(titulo_entrada "$e")" "$(basename "$e")"
-      done
-    else
-      printf '_Sin entradas: esta versión solo tiene commits._\n'
-    fi
-    printf '\n## Notas\n\n%s\n' "$NOTAS"
-    if [ -n "$ULTIMO" ]; then
-      printf '\n**Comparar:** https://github.com/%s/compare/%s...v%s\n' "$REPO" "$ULTIMO" "$NUEVA"
-    fi
-  } > "$f"
-
-  for e in "${PENDIENTES[@]}"; do
-    tmp=$(mktemp)
-    sed "s/^version: pendiente\$/version: v$NUEVA/" "$e" > "$tmp" && mv "$tmp" "$e"
-  done
-
-  # Fila nueva arriba del todo, justo debajo de la cabecera de la tabla.
-  fila="| [v$NUEVA](releases/v$NUEVA.md) | $hoy | ${TIPO:-inicial} | ${#PENDIENTES[@]} |"
-  tmp=$(mktemp)
-  awk -v fila="$fila" '
-    /<!-- releases:inicio -->/ { dentro = 1 }
-    { print }
-    dentro && /^\|---/ { print fila; dentro = 0 }
-  ' "$BITACORA/README.md" > "$tmp" && mv "$tmp" "$BITACORA/README.md"
+  local f_notas
+  f_notas=$(mktemp)
+  printf '%s\n' "$NOTAS" > "$f_notas"
+  "$DEVLOG/close-release.sh" "$NUEVA" --type "${TIPO:-initial}" ${ULTIMO:+--previous "$ULTIMO"} \
+    --notes "$f_notas" --repo "$REPO" >/dev/null
+  rm -f "$f_notas"
 }
 
 # ---------------------------------------------------------------- resumen
