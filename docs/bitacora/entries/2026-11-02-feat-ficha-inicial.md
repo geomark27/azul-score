@@ -5,7 +5,7 @@ type: feat
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#19"
-version: unreleased
+version: v0.4.0
 ---
 
 # Sorteo del jugador inicial y la ronda espera a quien tiene la ficha 1
