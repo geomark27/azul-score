@@ -72,7 +72,8 @@ export type Live = {
   gone: boolean;
   /** Error de la última acción enviada, no de la conexión. */
   actionError: string | null;
-  send: (a: Action) => Promise<void>;
+  /** Envía una acción. Devuelve si el servidor la aceptó. */
+  send: (a: Action) => Promise<boolean>;
   clearActionError: () => void;
 };
 
@@ -171,9 +172,11 @@ export function useRoom(code: string): Live {
         const { room: r } = await sendAction(code, a);
         accept(r);
         setActionError(null);
+        return true;
       } catch (e) {
-        if (e instanceof ApiError && e.gone) { setGone(true); return; }
-        setActionError((e as Error).message);
+        if (e instanceof ApiError && e.gone) setGone(true);
+        else setActionError((e as Error).message);
+        return false;
       }
     },
     [code, accept],

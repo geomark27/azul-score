@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VersionTag from '../../version-tag';
 import SalaQr from '../../sala-qr';
+import AvisoListo from '../../aviso-listo';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
-  MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, roomStandings,
+  MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, notReady, roomStandings,
 } from '@/lib/room';
 import { clientId, saveName, savedName, useRoom } from '@/lib/client';
 
@@ -244,6 +245,33 @@ function Juego({
   const tiles = floorTiles(p, iHaveFirst);
   const listos = room.seats.filter((s) => s.ready).length;
   const ultima = lastRound(room);
+  const faltan = notReady(room);
+  const nombres = faltan.map((s) => s.name).join(', ');
+
+  // Cerrar con gente sin «listo» pide un segundo toque diciendo quién falta:
+  // su ronda se cierra con lo que tenga marcado.
+  const [confirmar, setConfirmar] = useState(false);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (temporizador.current) clearTimeout(temporizador.current); }, []);
+  useEffect(() => { if (!faltan.length) setConfirmar(false); }, [faltan.length]);
+
+  const cerrarRonda = () => {
+    if (temporizador.current) clearTimeout(temporizador.current);
+    if (faltan.length && !confirmar) {
+      setConfirmar(true);
+      temporizador.current = setTimeout(() => setConfirmar(false), 5000);
+      return;
+    }
+    setConfirmar(false);
+    void live.send({ t: 'close' });
+  };
+
+  const [avisado, setAvisado] = useState(false);
+  const avisar = async () => {
+    if (!(await live.send({ t: 'nudge' }))) return;
+    setAvisado(true);
+    setTimeout(() => setAvisado(false), 3000);
+  };
 
   return (
     <main>
@@ -353,8 +381,13 @@ function Juego({
           <h2>Anfitrión</h2>
           <p className="hint">
             {listos} de {room.seats.length} listos
-            {allReady(room) ? ' · ya puedes cerrar la ronda' : ' · espera a que todos confirmen'}
+            {allReady(room) ? ' · ya puedes cerrar la ronda' : <> · faltan: <b>{nombres}</b></>}
           </p>
+          {!allReady(room) && (
+            <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={avisar} disabled={avisado}>
+              {avisado ? 'Aviso enviado ✓' : `Avisar a ${faltan.length === 1 ? faltan[0].name : 'los que faltan'}`}
+            </button>
+          )}
           {/* En la última ronda la única salida es cerrarla: eso ya termina la partida. */}
           {!ultima && (
             <div className="host-btns">
@@ -367,17 +400,27 @@ function Juego({
             </div>
           )}
           <button
-            className={`btn ${allReady(room) ? 'primary' : ''}`} style={{ width: '100%', marginTop: 8 }}
-            onClick={() => live.send({ t: 'close' })}
+            className={`btn ${confirmar ? 'danger' : allReady(room) ? 'primary' : ''}`}
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={cerrarRonda}
           >
-            {ultima ? `Cerrar ronda ${room.round} y terminar` : `Cerrar ronda ${room.round}`}
+            {confirmar
+              ? `¿Cerrar sin ${nombres}? Toca otra vez`
+              : ultima ? `Cerrar ronda ${room.round} y terminar` : `Cerrar ronda ${room.round}`}
           </button>
+          {confirmar && (
+            <p className="hint" style={{ marginTop: 8 }}>
+              Su ronda se cerrará con lo que tengan marcado ahora mismo.
+            </p>
+          )}
         </section>
       )}
 
       <button className="linkbtn" style={{ color: 'var(--muted)' }} onClick={() => live.send({ t: 'leave' })}>
         Salir de la sala
       </button>
+
+      <AvisoListo room={room} seat={seat} onReady={() => live.send({ t: 'ready', value: true })} />
 
       <div className="bar"><div className="in one">
         <button
