@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publica una versión: sube package.json, compila, etiqueta, sube a GitHub,
-# crea el release, pone develop al día y despliega. Lo llama `make release`.
+# Publica una versión: sube package.json, compila, cierra la bitácora
+# (docs/bitacora/releases/vX.Y.Z.md), etiqueta, sube a GitHub, crea el
+# release, pone develop al día y despliega. Lo llama `make release`.
 #
 #   scripts/release.sh [patch|minor|major] [--dry-run]
 #
@@ -112,6 +113,52 @@ notas() {
 }
 NOTAS=$(notas)
 
+# ---------------------------------------------------------------- bitácora
+# Las entradas con «version: pendiente» son las que salen en esta versión.
+# Al publicar se genera docs/bitacora/releases/vX.Y.Z.md, se les pone la
+# versión y se añade una fila al índice. Todo entra en el commit de release.
+
+BITACORA=docs/bitacora
+mapfile -t PENDIENTES < <(grep -lx 'version: pendiente' "$BITACORA"/entradas/*.md 2>/dev/null || true)
+
+titulo_entrada() { sed -n 's/^# //p' "$1" | head -n1; }
+
+escribir_bitacora() {
+  local f="$BITACORA/releases/v$NUEVA.md" e hoy fila tmp
+  hoy=$(date +%F)
+  mkdir -p "$BITACORA/releases"
+  {
+    printf -- '---\nversion: v%s\nfecha: %s\ntipo: %s\nanterior: %s\n---\n\n# v%s\n\n' \
+      "$NUEVA" "$hoy" "${TIPO:-inicial}" "${ULTIMO:-ninguna}" "$NUEVA"
+    printf '## Entradas de bitácora\n\n'
+    if [ "${#PENDIENTES[@]}" -gt 0 ]; then
+      for e in "${PENDIENTES[@]}"; do
+        printf -- '- [%s](../entradas/%s)\n' "$(titulo_entrada "$e")" "$(basename "$e")"
+      done
+    else
+      printf '_Sin entradas: esta versión solo tiene commits._\n'
+    fi
+    printf '\n## Notas\n\n%s\n' "$NOTAS"
+    if [ -n "$ULTIMO" ]; then
+      printf '\n**Comparar:** https://github.com/%s/compare/%s...v%s\n' "$REPO" "$ULTIMO" "$NUEVA"
+    fi
+  } > "$f"
+
+  for e in "${PENDIENTES[@]}"; do
+    tmp=$(mktemp)
+    sed "s/^version: pendiente\$/version: v$NUEVA/" "$e" > "$tmp" && mv "$tmp" "$e"
+  done
+
+  # Fila nueva arriba del todo, justo debajo de la cabecera de la tabla.
+  fila="| [v$NUEVA](releases/v$NUEVA.md) | $hoy | ${TIPO:-inicial} | ${#PENDIENTES[@]} |"
+  tmp=$(mktemp)
+  awk -v fila="$fila" '
+    /<!-- releases:inicio -->/ { dentro = 1 }
+    { print }
+    dentro && /^\|---/ { print fila; dentro = 0 }
+  ' "$BITACORA/README.md" > "$tmp" && mv "$tmp" "$BITACORA/README.md"
+}
+
 # ---------------------------------------------------------------- resumen
 
 echo ""
@@ -120,6 +167,13 @@ echo "${C}  versión actual: v$ACTUAL · último tag: ${ULTIMO:-ninguno}${N}"
 echo ""
 echo "  Cambios desde ${ULTIMO:-el inicio} (${#COMMITS[@]}):"
 printf '    · %s\n' "${COMMITS[@]}"
+echo ""
+if [ "${#PENDIENTES[@]}" -gt 0 ]; then
+  echo "  Entradas de bitácora (${#PENDIENTES[@]}):"
+  for e in "${PENDIENTES[@]}"; do echo "    · $(titulo_entrada "$e")  ${C}$(basename "$e")${N}"; done
+else
+  aviso "No hay entradas de bitácora pendientes: el release solo llevará las notas de los commits."
+fi
 echo ""
 
 if [ -z "$ULTIMO" ]; then
@@ -190,8 +244,9 @@ if ! npm run build >"$LOG" 2>&1; then
   falla "La compilación falló; package.json restaurado. Log completo: $LOG"
 fi
 
-paso 4 "Commit y tag v$NUEVA..."
-git add package.json package-lock.json
+paso 4 "Bitácora, commit y tag v$NUEVA..."
+escribir_bitacora
+git add package.json package-lock.json "$BITACORA"
 git commit -q --allow-empty -m "release: v$NUEVA"
 # verbatim: si no, git toma los «### …» de las notas por comentarios y los borra.
 git tag -a --cleanup=verbatim "v$NUEVA" -m "Release v$NUEVA" -m "$NOTAS"
@@ -204,6 +259,7 @@ fi
 
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   CUERPO="$NOTAS"
+  CUERPO+=$'\n\n'"**Bitácora:** https://github.com/$REPO/blob/v$NUEVA/$BITACORA/releases/v$NUEVA.md"
   [ -n "$ULTIMO" ] && CUERPO+=$'\n\n'"**Comparar:** https://github.com/$REPO/compare/$ULTIMO...v$NUEVA"
   gh release create "v$NUEVA" --title "v$NUEVA" --notes "$CUERPO" --verify-tag >/dev/null \
     && ok "Release publicado en GitHub" \
