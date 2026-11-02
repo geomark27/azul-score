@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publica una versión: sube package.json, compila, etiqueta, sube a GitHub,
-# crea el release, pone develop al día y despliega. Lo llama `make release`.
+# Publica una versión: sube package.json, compila, cierra la bitácora
+# (docs/bitacora/releases/vX.Y.Z.md), etiqueta, sube a GitHub, crea el
+# release, pone develop al día y despliega. Lo llama `make release`.
 #
 #   scripts/release.sh [patch|minor|major] [--dry-run]
 #
@@ -112,6 +113,28 @@ notas() {
 }
 NOTAS=$(notas)
 
+# ---------------------------------------------------------------- bitácora
+# Las entradas con «version: unreleased» son las que salen en esta versión.
+# Al publicar, la skill devlog (copiada en .claude/skills/devlog) genera
+# docs/bitacora/releases/vX.Y.Z.md, les pone la versión y añade la fila al
+# índice. Todo entra en el commit de release. Configuración: .devlog.conf.
+
+BITACORA=docs/bitacora
+DEVLOG=.claude/skills/devlog/scripts
+[ -x "$DEVLOG/close-release.sh" ] || falla "Falta la skill devlog en $DEVLOG."
+mapfile -t PENDIENTES < <(grep -lx 'version: unreleased' "$BITACORA"/entries/*.md 2>/dev/null || true)
+
+titulo_entrada() { sed -n 's/^# //p' "$1" | head -n1; }
+
+escribir_bitacora() {
+  local f_notas
+  f_notas=$(mktemp)
+  printf '%s\n' "$NOTAS" > "$f_notas"
+  "$DEVLOG/close-release.sh" "$NUEVA" --type "${TIPO:-initial}" ${ULTIMO:+--previous "$ULTIMO"} \
+    --notes "$f_notas" --repo "$REPO" >/dev/null
+  rm -f "$f_notas"
+}
+
 # ---------------------------------------------------------------- resumen
 
 echo ""
@@ -120,6 +143,13 @@ echo "${C}  versión actual: v$ACTUAL · último tag: ${ULTIMO:-ninguno}${N}"
 echo ""
 echo "  Cambios desde ${ULTIMO:-el inicio} (${#COMMITS[@]}):"
 printf '    · %s\n' "${COMMITS[@]}"
+echo ""
+if [ "${#PENDIENTES[@]}" -gt 0 ]; then
+  echo "  Entradas de bitácora (${#PENDIENTES[@]}):"
+  for e in "${PENDIENTES[@]}"; do echo "    · $(titulo_entrada "$e")  ${C}$(basename "$e")${N}"; done
+else
+  aviso "No hay entradas de bitácora pendientes: el release solo llevará las notas de los commits."
+fi
 echo ""
 
 if [ -z "$ULTIMO" ]; then
@@ -190,8 +220,9 @@ if ! npm run build >"$LOG" 2>&1; then
   falla "La compilación falló; package.json restaurado. Log completo: $LOG"
 fi
 
-paso 4 "Commit y tag v$NUEVA..."
-git add package.json package-lock.json
+paso 4 "Bitácora, commit y tag v$NUEVA..."
+escribir_bitacora
+git add package.json package-lock.json "$BITACORA"
 git commit -q --allow-empty -m "release: v$NUEVA"
 # verbatim: si no, git toma los «### …» de las notas por comentarios y los borra.
 git tag -a --cleanup=verbatim "v$NUEVA" -m "Release v$NUEVA" -m "$NOTAS"
@@ -204,6 +235,7 @@ fi
 
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   CUERPO="$NOTAS"
+  CUERPO+=$'\n\n'"**Bitácora:** https://github.com/$REPO/blob/v$NUEVA/$BITACORA/releases/v$NUEVA.md"
   [ -n "$ULTIMO" ] && CUERPO+=$'\n\n'"**Comparar:** https://github.com/$REPO/compare/$ULTIMO...v$NUEVA"
   gh release create "v$NUEVA" --title "v$NUEVA" --notes "$CUERPO" --verify-tag >/dev/null \
     && ok "Release publicado en GitHub" \

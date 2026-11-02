@@ -55,6 +55,11 @@ help:
 	@echo "    status          Muestra el estado del repositorio"
 	@echo "    log             Muestra los últimos commits"
 	@echo ""
+	@echo "$(YELLOW)  📓 Bitácora (docs/bitacora):$(NC)"
+	@echo "    bitacora        Crea la entrada de la rama actual"
+	@echo "    bitacora t='…'  Igual, con título"
+	@echo "    bitacora-check  Valida la entrada de la rama (lo mismo que pide la PR)"
+	@echo ""
 	@echo "$(YELLOW)  🚀 Versionado & Release:$(NC)"
 	@echo "    version           Ver la versión actual y el último tag"
 	@echo "    release-preview   Qué entraría en la versión y qué tipo se sugiere"
@@ -63,7 +68,7 @@ help:
 	@echo "    release-patch     0.1.0 -> 0.1.1   correcciones y retoques"
 	@echo "    release-minor     0.1.0 -> 0.2.0   funciones nuevas"
 	@echo "    release-major     0.1.0 -> 1.0.0   cambios incompatibles"
-	@echo "    (los releases salen de main y dejan develop al día)"
+	@echo "    (los releases salen de main, cierran la bitácora y dejan develop al día)"
 	@echo ""
 	@echo "$(YELLOW)  🩺 Despliegue:$(NC)"
 	@echo "    deploy          Lanza un despliegue en Vercel (Deploy Hook)"
@@ -197,6 +202,22 @@ log:
 	@echo "$(CYAN)📋 Últimos commits (rama: $(BRANCH)):$(NC)"
 	@echo ""
 	@git log --oneline -10
+
+# ================================================================
+#  Bitácora
+# ================================================================
+
+# Una entrada por rama en docs/bitacora/entries/. El release las cierra.
+# Usa la skill devlog copiada en el repo; configuración en .devlog.conf.
+DEVLOG=.claude/skills/devlog/scripts
+t?=
+
+.PHONY: bitacora bitacora-check
+bitacora:
+	@bash $(DEVLOG)/new-entry.sh $(if $(t),"$(t)")
+
+bitacora-check:
+	@bash $(DEVLOG)/verify.sh --base develop
 
 # ================================================================
 #  Versionado & Release
