@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import VersionTag from '../version-tag';
 import {
-  COLORS, PEN, Player, calc, closeRoundFor, colorOf, floorTiles, hasFullRow, newPlayer, standings,
+  COLORS, PEN, Player, calc, closeRoundFor, colorOf, floorTiles, hasFullRow, newPlayer, roundEndsGame,
+  standings,
 } from '@/lib/azul';
 
 type State = {
@@ -93,6 +94,11 @@ export default function Page() {
       if (d.first !== null) d.active = d.first;
       d.first = null;
       d.round += 1;
+      // Reglamento: con una fila completa la partida acaba aquí, sin vuelta atrás.
+      if (hasFullRow(d.players)) {
+        d.view = 'final';
+        d.history = [];
+      }
     });
 
   const undoRound = () =>
@@ -158,6 +164,7 @@ export default function Page() {
   if (s.view === 'final') {
     const table = standings(s.players);
     const sharedWin = table.some((r) => r.place === 1 && r.shared);
+    const terminada = hasFullRow(s.players);
     return (
       <main>
         <div className="top"><h1>Resultado</h1><span className="round">{s.round - 1} rondas</span></div>
@@ -191,8 +198,11 @@ export default function Page() {
           Orden por puntos totales. Desempate: más filas horizontales completas; si persiste, el puesto se comparte.
           {sharedWin && ' Hay victoria compartida.'}
         </p>
-        <div className="bar"><div className="in">
-          <button className="btn" onClick={() => update((d) => { d.view = 'game'; })}>Volver</button>
+        {/* «Volver» solo si se terminó a mano antes de tiempo; con una fila completa no hay más rondas. */}
+        <div className="bar"><div className={`in ${terminada ? 'one' : ''}`}>
+          {!terminada && (
+            <button className="btn" onClick={() => update((d) => { d.view = 'game'; })}>Volver</button>
+          )}
           <button className="btn primary" onClick={newGame}>{newLabel}</button>
         </div></div>
         <VersionTag />
@@ -205,11 +215,14 @@ export default function Page() {
   const iHaveFirst = s.first === s.active;
   const res = calc(p, iHaveFirst);
   const tiles = floorTiles(p, iHaveFirst);
+  const ultima = roundEndsGame(s.players);
   return (
     <main>
       <div className="top"><h1>Azul</h1><span className="round">Ronda {s.round}</span></div>
-      {hasFullRow(s.players) && (
-        <div className="banner">Hay una fila completa: esta es la última ronda. Ciérrala y pulsa «Terminar partida».</div>
+      {ultima && (
+        <div className="banner">
+          Alguien completa una fila en esta ronda: al cerrarla termina la partida y se suman los bonos.
+        </div>
       )}
       <div className="chips">
         {s.players.map((q, i) => {
@@ -292,12 +305,19 @@ export default function Page() {
         </div>
       </section>
 
-      <button className="linkbtn" onClick={() => update((d) => { d.view = 'final'; })}>Terminar partida y sumar bonos</button>
+      {/* En la última ronda la única salida es cerrarla: eso ya termina la partida. */}
+      {!ultima && (
+        <button className="linkbtn" onClick={() => update((d) => { d.view = 'final'; })}>Terminar partida y sumar bonos</button>
+      )}
       <button className="linkbtn" style={{ color: 'var(--muted)' }} onClick={newGame}>{newLabel}</button>
 
-      <div className="bar"><div className="in">
-        <button className="btn" disabled={!s.history.length} onClick={undoRound}>Deshacer ronda</button>
-        <button className="btn primary" onClick={closeRound}>Cerrar ronda {s.round}</button>
+      <div className="bar"><div className={`in ${ultima ? 'one' : ''}`}>
+        {!ultima && (
+          <button className="btn" disabled={!s.history.length} onClick={undoRound}>Deshacer ronda</button>
+        )}
+        <button className="btn primary" onClick={closeRound}>
+          {ultima ? `Cerrar ronda ${s.round} y terminar` : `Cerrar ronda ${s.round}`}
+        </button>
       </div></div>
       <VersionTag />
     </main>

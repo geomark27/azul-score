@@ -1,4 +1,6 @@
-import { PEN, Player, Standing, closeRoundFor, hasFullRow, newPlayer, standings } from './azul';
+import {
+  PEN, Player, Standing, closeRoundFor, hasFullRow, newPlayer, roundEndsGame, standings,
+} from './azul';
 
 export const MAX_SEATS = 4;
 export const MIN_SEATS = 2;
@@ -184,8 +186,9 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
 
     case 'start': {
       const e = hostOnly(); if (e) return e;
-      // Desde el lobby se inicia; desde el resultado final es una revancha.
+      // Solo desde el lobby. Una partida terminada no se reinicia en la misma sala.
       if (d.view === 'game') return { error: 'La partida ya está en curso.' };
+      if (d.view !== 'lobby') return { error: 'La partida ya terminó. Para jugar otra, abrid una sala nueva.' };
       if (d.seats.length < MIN_SEATS) return { error: 'Hacen falta al menos 2 jugadores.' };
       d.view = 'game';
       d.round = 1;
@@ -235,11 +238,18 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       if (d.first !== null) d.starter = d.first;
       d.first = null;
       d.round += 1;
+      // Reglamento: la partida acaba al cerrar la ronda en que alguien completa
+      // una fila. Se pasa directo al resultado, sin vuelta atrás.
+      if (hasFullRow(d.seats.map((s) => s.player))) {
+        d.view = 'final';
+        d.history = [];
+      }
       break;
     }
 
     case 'undo': {
       const e = hostOnly(); if (e) return e;
+      if (d.view !== 'game') return { error: 'La partida ya terminó: no se puede deshacer.' };
       const h = d.history.pop();
       if (!h) return { error: 'No hay ninguna ronda que deshacer.' };
       const o = JSON.parse(h) as { seats: Player[]; round: number; starter: number; first: number | null };
@@ -278,8 +288,9 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
 export const allReady = (room: Room) =>
   room.seats.length > 0 && room.seats.every((s) => s.ready);
 
+/** Cerrar la ronda en curso termina la partida (alguien completa una fila). */
 export const lastRound = (room: Room) =>
-  hasFullRow(room.seats.map((s) => s.player));
+  roundEndsGame(room.seats.map((s) => s.player));
 
 export const roomStandings = (room: Room): Standing[] =>
   standings(room.seats.map((s) => s.player));
