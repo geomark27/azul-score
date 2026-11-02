@@ -4,7 +4,7 @@ branch: feat/avisos-listos
 type: feat
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#15"
 version: unreleased
 ---
 
