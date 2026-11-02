@@ -4,7 +4,7 @@ branch: docs/bitacora-de-cambios
 type: docs
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#13"
 version: unreleased
 ---
 
