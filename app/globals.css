@@ -417,3 +417,16 @@ main{
 .clk{font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
 .clk.on{color:var(--accent);font-weight:700}
 .btn.turno{font-size:18px}
+
+/* ----------------------------------------------------------------
+   Inicio de ronda: la abre quien tiene la ficha 1
+   ---------------------------------------------------------------- */
+
+.inicio{margin-bottom:var(--s3)}
+.inicio.mio{border:2px solid var(--accent);animation:aviso-pulso 1.6s ease-in-out infinite}
+.inicio-cab{display:flex;gap:var(--s3);align-items:center}
+.inicio-cab h2{margin:0}
+.inicio-cab .hint{margin:var(--s1) 0 0}
+.panel.bloqueado{opacity:.55}
+@media (prefers-reduced-motion: reduce){ .inicio.mio{animation:none} }
+.abre-local{display:flex;align-items:center;gap:var(--s2);margin:0 0 var(--s3);font-size:15px}

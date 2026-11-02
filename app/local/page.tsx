@@ -15,6 +15,8 @@ type State = {
   players: Player[];
   round: number;
   active: number;
+  /** Quien abre la ronda en curso: sorteado en la primera, luego quien se llevó la ficha 1. */
+  starter: number;
   first: number | null; // quién tomó la ficha de jugador inicial esta ronda
   history: string[];
 };
@@ -27,6 +29,7 @@ const INITIAL: State = {
   players: [],
   round: 1,
   active: 0,
+  starter: 0,
   first: null,
   history: [],
 };
@@ -66,7 +69,9 @@ export default function Page() {
   const start = () =>
     update((d) => {
       d.players = d.names.slice(0, d.count).map((n, i) => newPlayer(n.trim() || `Jugador ${i + 1}`));
-      d.round = 1; d.active = 0; d.first = null; d.history = []; d.view = 'game';
+      // Reglamento: el jugador inicial de la primera ronda se sortea.
+      d.starter = Math.floor(Math.random() * d.players.length);
+      d.round = 1; d.active = d.starter; d.first = null; d.history = []; d.view = 'game';
     });
 
   const tapCell = (r: number, c: number) =>
@@ -88,10 +93,12 @@ export default function Page() {
 
   const closeRound = () =>
     update((d) => {
-      d.history.push(JSON.stringify({ players: d.players, round: d.round, active: d.active, first: d.first }));
+      d.history.push(JSON.stringify({
+        players: d.players, round: d.round, active: d.active, first: d.first, starter: d.starter,
+      }));
       d.players = d.players.map((p, i) => closeRoundFor(p, i === d.first));
       // Quien tomó la ficha abre la siguiente ronda.
-      if (d.first !== null) d.active = d.first;
+      if (d.first !== null) { d.active = d.first; d.starter = d.first; }
       d.first = null;
       d.round += 1;
       // Reglamento: con una fila completa la partida acaba aquí, sin vuelta atrás.
@@ -109,6 +116,7 @@ export default function Page() {
       d.players = o.players; d.round = o.round;
       d.active = o.active ?? d.active;
       d.first = o.first ?? null;
+      d.starter = o.starter ?? d.starter;
     });
 
   const newGame = () => {
@@ -224,6 +232,11 @@ export default function Page() {
           Alguien completa una fila en esta ronda: al cerrarla termina la partida y se suman los bonos.
         </div>
       )}
+      <p className="abre-local">
+        <span className="tok" aria-hidden="true">1</span>{' '}
+        Abre la ronda {s.round}: <b>{s.players[s.starter]?.name ?? '—'}</b>
+        {s.round === 1 ? ' (por sorteo)' : ' (se llevó la ficha 1)'}
+      </p>
       <div className="chips">
         {s.players.map((q, i) => {
           const d = calc(q, s.first === i).delta;
