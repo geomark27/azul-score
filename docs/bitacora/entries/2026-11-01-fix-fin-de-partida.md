@@ -4,7 +4,7 @@ branch: fix/fin-de-partida
 type: fix
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#14"
 version: unreleased
 ---
 
