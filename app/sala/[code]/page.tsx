@@ -6,6 +6,7 @@ import Link from 'next/link';
 import VersionTag from '../../version-tag';
 import SalaQr from '../../sala-qr';
 import AvisoListo from '../../aviso-listo';
+import { ModoJuego, Reloj, TiempoChip, useAhora } from '../../reloj';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
   MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, notReady, roomStandings,
@@ -213,6 +214,8 @@ function Lobby({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
           ))}
         </ul>
 
+        <ModoJuego room={room} host={host} live={live} />
+
         {host ? (
           <button
             className="btn primary" style={{ width: '100%', marginTop: 16 }}
@@ -247,6 +250,9 @@ function Juego({
   const ultima = lastRound(room);
   const faltan = notReady(room);
   const nombres = faltan.map((s) => s.name).join(', ');
+  const reloj = room.clock;
+  const ahora = useAhora(live, reloj?.phase === 'offer' && !reloj.paused);
+  const miTurno = reloj?.phase === 'offer' && reloj.turn === seat;
 
   // Cerrar con gente sin «listo» pide un segundo toque diciendo quién falta:
   // su ronda se cierra con lo que tenga marcado.
@@ -281,6 +287,8 @@ function Juego({
         </div>
       )}
 
+      <Reloj room={room} seat={seat} host={host} live={live} now={ahora} />
+
       <div className="chips">
         {room.seats.map((s, i) => {
           const d = calc(s.player, room.first === i).delta;
@@ -296,6 +304,7 @@ function Juego({
               <div className={`d ${cls(d)}`}>
                 {s.ready ? '✓ listo' : d === 0 ? ' ' : `${sign(d)} esta ronda`}
               </div>
+              <TiempoChip room={room} seat={i} now={ahora} />
             </div>
           );
         })}
@@ -423,12 +432,18 @@ function Juego({
       <AvisoListo room={room} seat={seat} onReady={() => live.send({ t: 'ready', value: true })} />
 
       <div className="bar"><div className="in one">
-        <button
-          className={`btn ${mine.ready ? '' : 'primary'}`}
-          onClick={() => live.send({ t: 'ready', value: !mine.ready })}
-        >
-          {mine.ready ? '✓ Listo · toca para corregir' : 'Estoy listo'}
-        </button>
+        {miTurno ? (
+          <button className="btn primary turno" onClick={() => live.send({ t: 'turn_pass' })}>
+            Terminé mi turno ▸
+          </button>
+        ) : (
+          <button
+            className={`btn ${mine.ready ? '' : 'primary'}`}
+            onClick={() => live.send({ t: 'ready', value: !mine.ready })}
+          >
+            {mine.ready ? '✓ Listo · toca para corregir' : 'Estoy listo'}
+          </button>
+        )}
       </div></div>
       <VersionTag />
     </main>
@@ -486,6 +501,13 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
               </>
             ) : 'Ni un punto perdido en el suelo.'}
           </p>
+          {room.clock && (
+            <p className="posible">
+              {p.timeLost
+                ? <>Reloj: <span className="neg">−{p.timeLost}</span> por pasarse de tiempo (ya restado).</>
+                : 'Reloj: sin pasarse de tiempo.'}
+            </p>
+          )}
         </section>
       ))}
 

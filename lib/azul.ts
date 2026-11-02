@@ -18,6 +18,8 @@ export type Player = {
    * Puede faltar en partidas guardadas antes de existir el campo.
    */
   lost?: number;
+  /** Puntos perdidos por pasarse de tiempo en el modo competitivo (ya restados de `score`). */
+  timeLost?: number;
 };
 
 export const colorOf = (r: number, c: number) => (((c - r) % 5) + 5) % 5;

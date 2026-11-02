@@ -221,6 +221,85 @@ describe('avisos a quien no marcó «listo»', () => {
   });
 });
 
+describe('modo competitivo', () => {
+  /** Partida de cuatro con reloj de 5 minutos. */
+  function conReloj() {
+    let r = newRoom('RELJ', A, 'Ana');
+    for (const [who, n] of [[B, 'Beto'], [C, 'Caro'], [D, 'Dani']]) r = ok(act(r, who, { t: 'join', name: n }));
+    r = ok(act(r, A, { t: 'clock_config', minutes: 5 }));
+    return ok(act(r, A, { t: 'start' }));
+  }
+
+  it('por defecto se juega sin reloj', () => {
+    const r = partida();
+    assert.equal(r.clock ?? null, null);
+    falla(act(r, A, { t: 'turn_start' }), 'sin reloj');
+  });
+
+  it('solo el anfitrión lo elige, en el lobby y con minutos válidos', () => {
+    let r = newRoom('LOBY', A, 'Ana');
+    r = ok(act(r, B, { t: 'join', name: 'Beto' }));
+    falla(act(r, B, { t: 'clock_config', minutes: 5 }), 'Beto no es anfitrión');
+    assert.ok(isErr(parseAction({ t: 'clock_config', minutes: 7 })));
+    r = ok(act(r, A, { t: 'clock_config', minutes: 10 }));
+    r = ok(act(r, A, { t: 'start' }));
+    assert.equal(r.clock?.left[1], 10 * 60_000);
+    falla(act(r, A, { t: 'clock_config', minutes: null }), 'ya empezada');
+  });
+
+  it('empieza quien abre la ronda y el turno pasa en orden de mesa', () => {
+    let r = conReloj();
+    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre la ronda');
+    r = ok(act(r, A, { t: 'turn_start' }));
+    assert.equal(r.clock?.turn, 0);
+    falla(act(r, B, { t: 'turn_pass' }), 'no es el turno de Beto');
+    r = ok(act(r, A, { t: 'turn_pass' }));
+    assert.equal(r.clock?.turn, 1);
+    r = ok(act(r, A, { t: 'turn_pass' })); // el anfitrión pasa por Beto
+    assert.equal(r.clock?.turn, 2);
+    r = ok(act(r, C, { t: 'turn_stop' }));
+    assert.equal(r.clock?.phase, 'scoring');
+    falla(act(r, C, { t: 'turn_pass' }), 'reloj parado');
+  });
+
+  it('al cerrar la ronda cobra el tiempo extra y la siguiente la abre la ficha', () => {
+    let r = conReloj();
+    r = ok(act(r, B, { t: 'tap', r: 0, c: 0 }));
+    r = ok(act(r, B, { t: 'first' }));
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r.clock!.left[1] = -45_000; // Beto se pasó 45 s: 2 puntos
+    r.seats[1].player.score = 10;
+    r = ok(act(r, A, { t: 'close' }));
+    const beto = r.seats[1].player;
+    // +1 del azulejo, −1 de la ficha en el suelo, −2 del reloj.
+    assert.equal(beto.score, 10 + 1 - 1 - 2);
+    assert.equal(beto.timeLost, 2);
+    assert.equal(beto.log.at(-1), -2, 'la ronda refleja la multa');
+    assert.equal(r.clock?.phase, 'ready');
+    assert.equal(r.starter, 1, 'abre Beto, que tomó la ficha');
+    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre esta ronda');
+    r = ok(act(r, B, { t: 'turn_start' }));
+    assert.equal(r.clock?.turn, 1);
+  });
+
+  it('la multa no deja la puntuación por debajo de 0', () => {
+    let r = conReloj();
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r.clock!.left[2] = -10 * 60_000;
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.seats[2].player.score, 0);
+  });
+
+  it('deshacer devuelve el reloj, parado', () => {
+    let r = conReloj();
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r = ok(act(r, A, { t: 'close' }));
+    r = ok(act(r, A, { t: 'undo' }));
+    assert.equal(r.clock?.phase, 'scoring');
+    assert.equal(r.clock?.since, null);
+  });
+});
+
 describe('desconexiones', () => {
   it('el asiento queda reservado con sus puntos y se puede retomar', () => {
     let r = partida();
