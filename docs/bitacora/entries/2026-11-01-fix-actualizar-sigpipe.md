@@ -5,7 +5,7 @@ type: fix
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#17"
-version: unreleased
+version: v0.3.0
 ---
 
 # make actualizar ya no falla con muchos commits nuevos

@@ -5,7 +5,7 @@ type: docs
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#13"
-version: unreleased
+version: v0.3.0
 ---
 
 # Bitácora de cambios en docs/bitacora

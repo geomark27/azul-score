@@ -5,7 +5,7 @@ type: fix
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#14"
-version: unreleased
+version: v0.3.0
 ---
 
 # La partida termina al cerrar la ronda con fila completa

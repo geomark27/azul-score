@@ -5,7 +5,7 @@ type: feat
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#16"
-version: unreleased
+version: v0.3.0
 ---
 
 # Modo competitivo con reloj tipo ajedrez

@@ -5,7 +5,7 @@ type: feat
 author: Marcos Ramos Jacome
 agents: claude
 pr: "#15"
-version: unreleased
+version: v0.3.0
 ---
 
 # Avisos a quien no marcó «Estoy listo»
