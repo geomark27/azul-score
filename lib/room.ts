@@ -1,4 +1,9 @@
-import { PEN, Player, Standing, closeRoundFor, hasFullRow, newPlayer, standings } from './azul';
+import {
+  PEN, Player, Standing, closeRoundFor, hasFullRow, newPlayer, roundEndsGame, standings,
+} from './azul';
+import {
+  Clock, closeRoundClock, endOffer, isClockMinutes, newClock, passTurn, startOffer, togglePause,
+} from './clock';
 
 export const MAX_SEATS = 4;
 export const MIN_SEATS = 2;
@@ -8,7 +13,15 @@ export type Seat = {
   clientId: string | null; // null = asiento abandonado, se puede reclamar
   ready: boolean;
   player: Player;
+  /**
+   * Momento del último aviso del anfitrión («te estamos esperando»). Su móvil
+   * lo detecta como nuevo al cambiar el valor y le salta el aviso.
+   */
+  nudgedAt?: number;
 };
+
+/** Tiempo mínimo entre dos avisos a la misma persona: evita bombardearla. */
+export const NUDGE_GAP_MS = 10_000;
 
 export type Room = {
   code: string;
@@ -19,6 +32,10 @@ export type Room = {
   round: number;
   starter: number; // asiento que abre la ronda en curso
   first: number | null; // asiento que tomó la ficha de jugador inicial
+  /** Modo competitivo elegido en el lobby: minutos por jugador, o null para jugar sin reloj. */
+  clockMinutes?: number | null;
+  /** Reloj de la partida en curso; null o ausente = modo normal. */
+  clock?: Clock | null;
   history: string[];
   version: number;
   updatedAt: number;
@@ -33,6 +50,12 @@ export type Action =
   | { t: 'floor'; delta: number }
   | { t: 'first' }
   | { t: 'ready'; value: boolean }
+  | { t: 'nudge' }
+  | { t: 'clock_config'; minutes: number | null }
+  | { t: 'turn_start' }
+  | { t: 'turn_pass' }
+  | { t: 'turn_stop' }
+  | { t: 'clock_pause' }
   | { t: 'close' }
   | { t: 'undo' }
   | { t: 'finish' }
@@ -110,8 +133,15 @@ export function parseAction(raw: unknown): Action | Err {
     }
     case 'ready':
       return { t: 'ready', value: !!a.value };
+    case 'clock_config': {
+      if (a.minutes === null) return { t: 'clock_config', minutes: null };
+      const m = Number(a.minutes);
+      return isClockMinutes(m) ? { t: 'clock_config', minutes: m } : { error: 'Tiempo de reloj inválido.' };
+    }
+    case 'turn_start': case 'turn_pass': case 'turn_stop': case 'clock_pause':
+      return { t: a.t };
     case 'leave': case 'start': case 'first': case 'close': case 'undo':
-    case 'finish': case 'close_room':
+    case 'finish': case 'close_room': case 'nudge':
       return { t: a.t };
     default:
       return { error: 'Acción desconocida.' };
@@ -134,6 +164,8 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
   const hostOnly = () => (host ? null : { error: 'Solo el anfitrión puede hacer esto.' });
   const seated = () => (mine ? null : { error: 'No estás sentado en esta partida.' });
   const inGame = () => (d.view === 'game' ? null : { error: 'La partida no está en curso.' });
+  const withClock = () => (d.clock ? null : { error: 'Esta partida se juega sin reloj.' });
+  const now = Date.now();
 
   switch (action.t) {
     case 'join': {
@@ -184,15 +216,52 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
 
     case 'start': {
       const e = hostOnly(); if (e) return e;
-      // Desde el lobby se inicia; desde el resultado final es una revancha.
+      // Solo desde el lobby. Una partida terminada no se reinicia en la misma sala.
       if (d.view === 'game') return { error: 'La partida ya está en curso.' };
+      if (d.view !== 'lobby') return { error: 'La partida ya terminó. Para jugar otra, abrid una sala nueva.' };
       if (d.seats.length < MIN_SEATS) return { error: 'Hacen falta al menos 2 jugadores.' };
       d.view = 'game';
       d.round = 1;
       d.starter = 0;
       d.first = null;
       d.history = [];
+      d.clock = d.clockMinutes ? newClock(d.clockMinutes, d.seats.length) : null;
       d.seats.forEach((s) => { s.ready = false; s.player = newPlayer(s.name); });
+      break;
+    }
+
+    case 'clock_config': {
+      const e = hostOnly(); if (e) return e;
+      if (d.view !== 'lobby') return { error: 'El modo de juego se elige antes de empezar.' };
+      d.clockMinutes = action.minutes;
+      break;
+    }
+
+    case 'turn_start': {
+      const e = seated() ?? inGame() ?? withClock(); if (e) return e;
+      const c = d.clock!;
+      if (c.phase !== 'ready') return { error: 'La ronda ya empezó.' };
+      if (!host && i !== d.starter) return { error: `Empieza la ronda ${d.seats[d.starter].name} o el anfitrión.` };
+      startOffer(c, d.starter, now);
+      break;
+    }
+
+    case 'turn_pass':
+    case 'turn_stop': {
+      const e = seated() ?? inGame() ?? withClock(); if (e) return e;
+      const c = d.clock!;
+      if (c.phase !== 'offer' || c.turn === null) return { error: 'No hay ningún turno en marcha.' };
+      // Solo quien tiene el turno, o el anfitrión por él (si se le olvida pulsar).
+      if (!host && i !== c.turn) return { error: `Es el turno de ${d.seats[c.turn].name}.` };
+      if (action.t === 'turn_pass') passTurn(c, (c.turn + 1) % d.seats.length, now);
+      else endOffer(c, now);
+      break;
+    }
+
+    case 'clock_pause': {
+      const e = hostOnly() ?? inGame() ?? withClock(); if (e) return e;
+      if (d.clock!.phase !== 'offer') return { error: 'El reloj no está corriendo.' };
+      togglePause(d.clock!, now);
       break;
     }
 
@@ -222,6 +291,20 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     case 'ready': {
       const e = seated() ?? inGame(); if (e) return e;
       mine!.ready = action.value;
+      if (action.value) delete mine!.nudgedAt; // ya respondió al aviso
+      break;
+    }
+
+    case 'nudge': {
+      const e = hostOnly() ?? inGame(); if (e) return e;
+      const now = Date.now();
+      // Solo a los demás que están conectados y sin «listo». Los asientos sin
+      // conexión no tienen un móvil al que avisar.
+      const pendientes = d.seats.filter((s, k) => k !== i && !s.ready && s.clientId !== null);
+      if (!pendientes.length) return { error: 'No hay nadie a quien avisar: los demás ya están listos.' };
+      const avisables = pendientes.filter((s) => !s.nudgedAt || now - s.nudgedAt >= NUDGE_GAP_MS);
+      if (!avisables.length) return { error: 'Acabas de avisarles. Espera unos segundos.' };
+      avisables.forEach((s) => { s.nudgedAt = now; });
       break;
     }
 
@@ -229,24 +312,50 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       const e = hostOnly() ?? inGame(); if (e) return e;
       d.history.push(JSON.stringify({
         seats: d.seats.map((s) => s.player),
-        round: d.round, starter: d.starter, first: d.first,
+        round: d.round, starter: d.starter, first: d.first, clock: d.clock ?? null,
       }));
-      d.seats.forEach((s, k) => { s.player = closeRoundFor(s.player, k === d.first); s.ready = false; });
+      // Tiempo extra: se cobra al cerrar, sobre los puntos ya calculados de la ronda.
+      const multas = d.clock ? closeRoundClock(d.clock, now) : [];
+      d.seats.forEach((s, k) => {
+        s.player = closeRoundFor(s.player, k === d.first);
+        const multa = Math.min(multas[k] ?? 0, s.player.score);
+        if (multa > 0) {
+          s.player.score -= multa;
+          s.player.log[s.player.log.length - 1] -= multa;
+          s.player.timeLost = (s.player.timeLost ?? 0) + multa;
+        }
+        s.ready = false;
+        delete s.nudgedAt; // un aviso es de una ronda: no reaparece en la siguiente
+      });
       if (d.first !== null) d.starter = d.first;
       d.first = null;
       d.round += 1;
+      // Reglamento: la partida acaba al cerrar la ronda en que alguien completa
+      // una fila. Se pasa directo al resultado, sin vuelta atrás.
+      if (hasFullRow(d.seats.map((s) => s.player))) {
+        d.view = 'final';
+        d.history = [];
+      }
       break;
     }
 
     case 'undo': {
       const e = hostOnly(); if (e) return e;
+      if (d.view !== 'game') return { error: 'La partida ya terminó: no se puede deshacer.' };
       const h = d.history.pop();
       if (!h) return { error: 'No hay ninguna ronda que deshacer.' };
-      const o = JSON.parse(h) as { seats: Player[]; round: number; starter: number; first: number | null };
+      const o = JSON.parse(h) as {
+        seats: Player[]; round: number; starter: number; first: number | null; clock?: Clock | null;
+      };
       d.seats.forEach((s, k) => { if (o.seats[k]) s.player = o.seats[k]; s.ready = false; });
       d.round = o.round;
       d.starter = o.starter;
       d.first = o.first;
+      // El reloj vuelve a como estaba, pero parado: nadie pierde tiempo mientras se corrige.
+      if (o.clock) {
+        d.clock = o.clock;
+        endOffer(d.clock, now);
+      }
       d.view = 'game';
       break;
     }
@@ -254,6 +363,7 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     case 'finish': {
       const e = hostOnly(); if (e) return e;
       if (d.view === 'lobby') return { error: 'La partida no ha empezado.' };
+      if (d.clock) endOffer(d.clock, now); // el reloj no sigue corriendo en el resultado
       d.view = 'final';
       break;
     }
@@ -278,8 +388,20 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
 export const allReady = (room: Room) =>
   room.seats.length > 0 && room.seats.every((s) => s.ready);
 
+/** Asientos que aún no marcaron «listo», en orden de mesa. */
+export const notReady = (room: Room) => room.seats.filter((s) => !s.ready);
+
+/**
+ * Este asiento es el único que falta por marcar «listo» (y hay más jugadores).
+ * Su móvil le recuerda solo, sin que el anfitrión tenga que pulsar nada.
+ */
+export const onlyOneMissing = (room: Room, seat: number) =>
+  room.seats.length > 1 && !room.seats[seat]?.ready &&
+  room.seats.every((s, k) => k === seat || s.ready);
+
+/** Cerrar la ronda en curso termina la partida (alguien completa una fila). */
 export const lastRound = (room: Room) =>
-  hasFullRow(room.seats.map((s) => s.player));
+  roundEndsGame(room.seats.map((s) => s.player));
 
 export const roomStandings = (room: Room): Standing[] =>
   standings(room.seats.map((s) => s.player));

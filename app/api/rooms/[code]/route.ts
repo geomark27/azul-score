@@ -17,7 +17,8 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   const { code } = await ctx.params;
   const room = await store.get(norm(code));
   if (!room) return NextResponse.json({ error: 'Esa sala no existe o ya caducó.' }, { status: 404 });
-  return NextResponse.json({ room, push: store.push });
+  // `now`: hora del servidor, para que el cliente pinte el reloj competitivo sin desfase.
+  return NextResponse.json({ room, push: store.push, now: Date.now() });
 }
 
 /** POST /api/rooms/[code] — aplica una acción del jugador. */
@@ -34,5 +35,5 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const out = await store.mutate(norm(code), (room) => apply(room, clientId, action));
   if (isErr(out)) return NextResponse.json(out, { status: 409 });
-  return NextResponse.json({ room: out });
+  return NextResponse.json({ room: out, now: Date.now() });
 }

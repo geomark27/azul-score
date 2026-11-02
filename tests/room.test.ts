@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { calc } from '../lib/azul';
 import {
-  Action, MAX_SEATS, Room, apply, codeFromScan, isErr, newCode, newRoom, parseAction, roomStandings,
+  Action, MAX_SEATS, NUDGE_GAP_MS, Room, apply, codeFromScan, isErr, lastRound, newCode, newRoom,
+  notReady, onlyOneMissing, parseAction, roomStandings,
 } from '../lib/room';
 
 const ok = (r: Room | { error: string }): Room => {
@@ -168,6 +169,137 @@ describe('ciclo de la ronda', () => {
   });
 });
 
+describe('avisos a quien no marcó «listo»', () => {
+  it('el anfitrión avisa solo a los demás que faltan', () => {
+    let r = partida();
+    r = ok(act(r, B, { t: 'ready', value: true }));
+    r = ok(act(r, A, { t: 'nudge' }));
+    assert.equal(r.seats[0].nudgedAt, undefined, 'el anfitrión no se avisa a sí mismo');
+    assert.equal(r.seats[1].nudgedAt, undefined, 'Beto ya estaba listo');
+    assert.ok(r.seats[2].nudgedAt && r.seats[3].nudgedAt);
+    assert.deepEqual(notReady(r).map((s) => s.name), ['Ana', 'Caro', 'Dani']);
+  });
+
+  it('solo puede avisar el anfitrión y solo en partida', () => {
+    let r = partida();
+    falla(act(r, B, { t: 'nudge' }), 'Beto no es el anfitrión');
+    r = newRoom('LOBY', A, 'Ana');
+    falla(act(r, A, { t: 'nudge' }), 'en el lobby');
+  });
+
+  it('no deja avisar dos veces seguidas a la misma persona', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'nudge' }));
+    falla(act(r, A, { t: 'nudge' }), 'aviso repetido');
+    r.seats.forEach((s) => { if (s.nudgedAt) s.nudgedAt -= NUDGE_GAP_MS; });
+    ok(act(r, A, { t: 'nudge' }));
+  });
+
+  it('no avisa a asientos sin conexión ni si los demás están listos', () => {
+    let r = partida();
+    r = ok(act(r, B, { t: 'leave' }));
+    for (const who of [C, D]) r = ok(act(r, who, { t: 'ready', value: true }));
+    falla(act(r, A, { t: 'nudge' }), 'solo queda Beto, sin conexión');
+  });
+
+  it('el aviso se borra al marcar «listo» y al cerrar la ronda', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'nudge' }));
+    r = ok(act(r, B, { t: 'ready', value: true }));
+    assert.equal(r.seats[1].nudgedAt, undefined);
+    r = ok(act(r, A, { t: 'close' }));
+    assert.ok(r.seats.every((s) => s.nudgedAt === undefined));
+  });
+
+  it('detecta cuándo solo falta una persona', () => {
+    let r = partida();
+    for (const who of [A, B, C]) r = ok(act(r, who, { t: 'ready', value: true }));
+    assert.equal(onlyOneMissing(r, 3), true);
+    assert.equal(onlyOneMissing(r, 0), false, 'Ana ya está lista');
+    r = ok(act(r, B, { t: 'ready', value: false }));
+    assert.equal(onlyOneMissing(r, 3), false, 'ahora faltan dos');
+  });
+});
+
+describe('modo competitivo', () => {
+  /** Partida de cuatro con reloj de 5 minutos. */
+  function conReloj() {
+    let r = newRoom('RELJ', A, 'Ana');
+    for (const [who, n] of [[B, 'Beto'], [C, 'Caro'], [D, 'Dani']]) r = ok(act(r, who, { t: 'join', name: n }));
+    r = ok(act(r, A, { t: 'clock_config', minutes: 5 }));
+    return ok(act(r, A, { t: 'start' }));
+  }
+
+  it('por defecto se juega sin reloj', () => {
+    const r = partida();
+    assert.equal(r.clock ?? null, null);
+    falla(act(r, A, { t: 'turn_start' }), 'sin reloj');
+  });
+
+  it('solo el anfitrión lo elige, en el lobby y con minutos válidos', () => {
+    let r = newRoom('LOBY', A, 'Ana');
+    r = ok(act(r, B, { t: 'join', name: 'Beto' }));
+    falla(act(r, B, { t: 'clock_config', minutes: 5 }), 'Beto no es anfitrión');
+    assert.ok(isErr(parseAction({ t: 'clock_config', minutes: 7 })));
+    r = ok(act(r, A, { t: 'clock_config', minutes: 10 }));
+    r = ok(act(r, A, { t: 'start' }));
+    assert.equal(r.clock?.left[1], 10 * 60_000);
+    falla(act(r, A, { t: 'clock_config', minutes: null }), 'ya empezada');
+  });
+
+  it('empieza quien abre la ronda y el turno pasa en orden de mesa', () => {
+    let r = conReloj();
+    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre la ronda');
+    r = ok(act(r, A, { t: 'turn_start' }));
+    assert.equal(r.clock?.turn, 0);
+    falla(act(r, B, { t: 'turn_pass' }), 'no es el turno de Beto');
+    r = ok(act(r, A, { t: 'turn_pass' }));
+    assert.equal(r.clock?.turn, 1);
+    r = ok(act(r, A, { t: 'turn_pass' })); // el anfitrión pasa por Beto
+    assert.equal(r.clock?.turn, 2);
+    r = ok(act(r, C, { t: 'turn_stop' }));
+    assert.equal(r.clock?.phase, 'scoring');
+    falla(act(r, C, { t: 'turn_pass' }), 'reloj parado');
+  });
+
+  it('al cerrar la ronda cobra el tiempo extra y la siguiente la abre la ficha', () => {
+    let r = conReloj();
+    r = ok(act(r, B, { t: 'tap', r: 0, c: 0 }));
+    r = ok(act(r, B, { t: 'first' }));
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r.clock!.left[1] = -45_000; // Beto se pasó 45 s: 2 puntos
+    r.seats[1].player.score = 10;
+    r = ok(act(r, A, { t: 'close' }));
+    const beto = r.seats[1].player;
+    // +1 del azulejo, −1 de la ficha en el suelo, −2 del reloj.
+    assert.equal(beto.score, 10 + 1 - 1 - 2);
+    assert.equal(beto.timeLost, 2);
+    assert.equal(beto.log.at(-1), -2, 'la ronda refleja la multa');
+    assert.equal(r.clock?.phase, 'ready');
+    assert.equal(r.starter, 1, 'abre Beto, que tomó la ficha');
+    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre esta ronda');
+    r = ok(act(r, B, { t: 'turn_start' }));
+    assert.equal(r.clock?.turn, 1);
+  });
+
+  it('la multa no deja la puntuación por debajo de 0', () => {
+    let r = conReloj();
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r.clock!.left[2] = -10 * 60_000;
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.seats[2].player.score, 0);
+  });
+
+  it('deshacer devuelve el reloj, parado', () => {
+    let r = conReloj();
+    r = ok(act(r, A, { t: 'turn_start' }));
+    r = ok(act(r, A, { t: 'close' }));
+    r = ok(act(r, A, { t: 'undo' }));
+    assert.equal(r.clock?.phase, 'scoring');
+    assert.equal(r.clock?.since, null);
+  });
+});
+
 describe('desconexiones', () => {
   it('el asiento queda reservado con sus puntos y se puede retomar', () => {
     let r = partida();
@@ -210,7 +342,7 @@ describe('cerrar la sala', () => {
     for (const a of [
       { t: 'start' }, { t: 'finish' }, { t: 'close' }, { t: 'undo' },
       { t: 'tap', r: 0, c: 0 }, { t: 'floor', delta: 1 }, { t: 'first' },
-      { t: 'ready', value: true }, { t: 'join', name: 'Evo' }, { t: 'close_room' },
+      { t: 'ready', value: true }, { t: 'join', name: 'Evo' }, { t: 'close_room' }, { t: 'nudge' },
     ] as Action[]) {
       falla(act(r, A, a), `${a.t} tras cerrar`);
       falla(act(r, E, a), `${a.t} de un extraño tras cerrar`);
@@ -218,8 +350,57 @@ describe('cerrar la sala', () => {
   });
 });
 
-describe('final y revancha', () => {
-  it('ordena el podio y permite volver a jugar con los mismos', () => {
+describe('fin de partida', () => {
+  /** Ana con la fila de arriba a falta de una casilla. */
+  const casiFila = (r: Room) => {
+    r.seats[0].player.wall[0] = [true, true, true, true, false];
+    return r;
+  };
+
+  it('avisa durante la ronda en que alguien va a completar una fila', () => {
+    let r = casiFila(partida());
+    assert.equal(lastRound(r), false);
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    assert.equal(lastRound(r), true);
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 })); // lo desmarca
+    assert.equal(lastRound(r), false);
+  });
+
+  it('cerrar esa ronda pasa directo al resultado', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'final');
+    assert.equal(r.round, 2, 'se cuenta la ronda jugada');
+    assert.deepEqual(r.seats[0].player.wall[0], [true, true, true, true, true]);
+  });
+
+  it('una ronda sin fila completa sigue la partida', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'game');
+  });
+
+  it('una sala vieja que ya tenía la fila completa termina al cerrar', () => {
+    let r = partida();
+    r.seats[2].player.wall[3] = [true, true, true, true, true];
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'final');
+  });
+
+  it('no hay vuelta atrás: ni deshacer ni más rondas ni revancha', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    r = ok(act(r, A, { t: 'close' }));
+    falla(act(r, A, { t: 'undo' }), 'deshacer tras el final');
+    falla(act(r, A, { t: 'close' }), 'otra ronda tras el final');
+    falla(act(r, A, { t: 'start' }), 'revancha');
+    assert.equal(r.history.length, 0);
+  });
+});
+
+describe('resultado', () => {
+  it('ordena el podio', () => {
     let r = partida();
     r.seats[0].player.score = 40;
     r.seats[1].player.score = 62;
@@ -233,10 +414,5 @@ describe('final y revancha', () => {
       roomStandings(r).map((s) => `${s.place} ${s.p.name}`),
       ['1 Dani', '2 Beto', '3 Caro', '4 Ana'],
     );
-
-    r = ok(act(r, A, { t: 'start' }));
-    assert.equal(r.round, 1);
-    assert.equal(r.seats.length, 4);
-    assert.ok(r.seats.every((s) => s.player.score === 0));
   });
 });

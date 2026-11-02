@@ -118,7 +118,7 @@ if ! SALIDA=$(git pull --ff-only origin "$RAMA" 2>&1); then
       "  · poner tus commits encima de los de origin:  git pull --rebase origin $RAMA" \
       "  · quedarte con lo de origin y tirar los tuyos: git reset --hard origin/$RAMA" \
       "Tus commits locales:" \
-      "$(git log --oneline "origin/$RAMA..HEAD" | head -5 | sed 's/^/      /')"
+      "$(git log --oneline -5 "origin/$RAMA..HEAD" | sed 's/^/      /')"
   fi
   echo "$SALIDA" | sed 's/^/   /' >&2
   if grep -q "would be overwritten" <<< "$SALIDA"; then
@@ -139,7 +139,9 @@ elif [ "$ANTES" = "$DESPUES" ]; then
 else
   NUEVOS=$(git rev-list --count "$ANTES..$DESPUES")
   ok "$RAMA actualizada: $NUEVOS commit(s) nuevo(s)."
-  git log --oneline "$ANTES..$DESPUES" | head -10 | sed 's/^/    · /'
+  # -10 en git log y no «| head -10»: con pipefail, head cortaría la tubería y
+  # git log moriría por SIGPIPE (código 141) aunque la actualización fuera bien.
+  git log --oneline -10 "$ANTES..$DESPUES" | sed 's/^/    · /'
   [ "$NUEVOS" -gt 10 ] && echo "    · … y $((NUEVOS - 10)) más"
   if git diff --quiet "$ANTES" "$DESPUES" -- package.json package-lock.json; then :; else
     aviso "Cambiaron las dependencias: ejecuta make install."
