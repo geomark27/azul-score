@@ -11,7 +11,7 @@ const AUTO_MS = 20_000;
 // se crea y se desbloquea en el primer toque de la pantalla, y se reutiliza.
 let audio: AudioContext | null = null;
 
-function desbloquearAudio() {
+export function desbloquearAudio() {
   try {
     const Ctx = window.AudioContext
       ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -39,14 +39,14 @@ function pitido() {
 }
 
 /** Vibración (Android), pitido y título parpadeando. Devuelve cómo pararlo. */
-function alarma(): () => void {
+export function alarma(titulo = '⚠ Te están esperando'): () => void {
   try { navigator.vibrate?.([300, 150, 300, 150, 600]); } catch {}
   pitido();
   const original = document.title;
   let on = false;
   const id = setInterval(() => {
     on = !on;
-    document.title = on ? '⚠ Te están esperando' : original;
+    document.title = on ? titulo : original;
   }, 900);
   return () => { clearInterval(id); document.title = original; };
 }

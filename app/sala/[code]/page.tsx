@@ -7,6 +7,7 @@ import VersionTag from '../../version-tag';
 import SalaQr from '../../sala-qr';
 import AvisoListo from '../../aviso-listo';
 import { ModoJuego, Reloj, TiempoChip, useAhora } from '../../reloj';
+import InicioRonda from '../../inicio-ronda';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
   MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, notReady, roomStandings,
@@ -253,6 +254,7 @@ function Juego({
   const reloj = room.clock;
   const ahora = useAhora(live, reloj?.phase === 'offer' && !reloj.paused);
   const miTurno = reloj?.phase === 'offer' && reloj.turn === seat;
+  const esperando = !!room.waiting; // hasta que quien abre pulse «Empezar ronda», nadie anota
 
   // Cerrar con gente sin «listo» pide un segundo toque diciendo quién falta:
   // su ronda se cierra con lo que tenga marcado.
@@ -287,6 +289,7 @@ function Juego({
         </div>
       )}
 
+      <InicioRonda room={room} seat={seat} host={host} live={live} />
       <Reloj room={room} seat={seat} host={host} live={live} now={ahora} />
 
       <div className="chips">
@@ -298,6 +301,7 @@ function Juego({
                 <span>{s.name}</span>
                 {i === seat && <span className="yo">tú</span>}
                 {room.first === i && <span className="tok" title="Tiene la ficha de jugador inicial">1</span>}
+                {esperando && room.starter === i && <span className="tag">abre</span>}
                 {s.clientId === null && <span className="tag off">sin conexión</span>}
               </div>
               <div className="s">{s.player.score}</div>
@@ -310,7 +314,7 @@ function Juego({
         })}
       </div>
 
-      <section className="panel">
+      <section className={`panel ${esperando ? 'bloqueado' : ''}`} aria-disabled={esperando}>
         <h2>Tu tablero · {mine.name}</h2>
         <p className="hint">
           Toca un azulejo de cada fila que pasó de tu tablero de preparación a la pared.
@@ -327,7 +331,7 @@ function Juego({
                 key={i}
                 className={`cell ${placed ? 'placed' : ''} ${pend ? 'pending' : ''}`}
                 style={{ background: placed || pend ? COLORS[k] : COLORS[k] + '3d' }}
-                disabled={placed}
+                disabled={placed || esperando}
                 onClick={() => live.send({ t: 'tap', r, c })}
                 aria-label={`Fila ${r + 1}, columna ${c + 1}${placed ? ', colocado' : pend ? ', por colocar' : ''}`}
               />
@@ -337,6 +341,7 @@ function Juego({
 
         <button
           className={`first-ctl ${iHaveFirst ? 'on' : ''}`} aria-pressed={iHaveFirst}
+          disabled={esperando}
           onClick={() => live.send({ t: 'first' })}
         >
           <span className="tok big">1</span>
@@ -360,9 +365,9 @@ function Juego({
             </div>
           </div>
           <div className="stepper">
-            <button onClick={() => live.send({ t: 'floor', delta: -1 })} aria-label="Quitar uno">−</button>
+            <button disabled={esperando} onClick={() => live.send({ t: 'floor', delta: -1 })} aria-label="Quitar uno">−</button>
             <output>{p.floor}</output>
-            <button onClick={() => live.send({ t: 'floor', delta: 1 })} aria-label="Añadir uno">+</button>
+            <button disabled={esperando} onClick={() => live.send({ t: 'floor', delta: 1 })} aria-label="Añadir uno">+</button>
           </div>
         </div>
         <div className="floor-slots">
@@ -388,11 +393,15 @@ function Juego({
       {host && (
         <section className="panel host">
           <h2>Anfitrión</h2>
-          <p className="hint">
-            {listos} de {room.seats.length} listos
-            {allReady(room) ? ' · ya puedes cerrar la ronda' : <> · faltan: <b>{nombres}</b></>}
-          </p>
-          {!allReady(room) && (
+          {esperando ? (
+            <p className="hint">La ronda aún no ha empezado: no hay nada que cerrar ni a quién avisar.</p>
+          ) : (
+            <p className="hint">
+              {listos} de {room.seats.length} listos
+              {allReady(room) ? ' · ya puedes cerrar la ronda' : <> · faltan: <b>{nombres}</b></>}
+            </p>
+          )}
+          {!esperando && !allReady(room) && (
             <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={avisar} disabled={avisado}>
               {avisado ? 'Aviso enviado ✓' : `Avisar a ${faltan.length === 1 ? faltan[0].name : 'los que faltan'}`}
             </button>
@@ -411,6 +420,7 @@ function Juego({
           <button
             className={`btn ${confirmar ? 'danger' : allReady(room) ? 'primary' : ''}`}
             style={{ width: '100%', marginTop: 8 }}
+            disabled={esperando}
             onClick={cerrarRonda}
           >
             {confirmar
@@ -439,9 +449,12 @@ function Juego({
         ) : (
           <button
             className={`btn ${mine.ready ? '' : 'primary'}`}
+            disabled={esperando}
             onClick={() => live.send({ t: 'ready', value: !mine.ready })}
           >
-            {mine.ready ? '✓ Listo · toca para corregir' : 'Estoy listo'}
+            {esperando
+              ? `Esperando a que ${room.seats[room.starter]?.name ?? 'quien abre'} empiece`
+              : mine.ready ? '✓ Listo · toca para corregir' : 'Estoy listo'}
           </button>
         )}
       </div></div>
