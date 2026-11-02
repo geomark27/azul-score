@@ -10,7 +10,15 @@ export type Seat = {
   clientId: string | null; // null = asiento abandonado, se puede reclamar
   ready: boolean;
   player: Player;
+  /**
+   * Momento del último aviso del anfitrión («te estamos esperando»). Su móvil
+   * lo detecta como nuevo al cambiar el valor y le salta el aviso.
+   */
+  nudgedAt?: number;
 };
+
+/** Tiempo mínimo entre dos avisos a la misma persona: evita bombardearla. */
+export const NUDGE_GAP_MS = 10_000;
 
 export type Room = {
   code: string;
@@ -35,6 +43,7 @@ export type Action =
   | { t: 'floor'; delta: number }
   | { t: 'first' }
   | { t: 'ready'; value: boolean }
+  | { t: 'nudge' }
   | { t: 'close' }
   | { t: 'undo' }
   | { t: 'finish' }
@@ -113,7 +122,7 @@ export function parseAction(raw: unknown): Action | Err {
     case 'ready':
       return { t: 'ready', value: !!a.value };
     case 'leave': case 'start': case 'first': case 'close': case 'undo':
-    case 'finish': case 'close_room':
+    case 'finish': case 'close_room': case 'nudge':
       return { t: a.t };
     default:
       return { error: 'Acción desconocida.' };
@@ -225,6 +234,20 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     case 'ready': {
       const e = seated() ?? inGame(); if (e) return e;
       mine!.ready = action.value;
+      if (action.value) delete mine!.nudgedAt; // ya respondió al aviso
+      break;
+    }
+
+    case 'nudge': {
+      const e = hostOnly() ?? inGame(); if (e) return e;
+      const now = Date.now();
+      // Solo a los demás que están conectados y sin «listo». Los asientos sin
+      // conexión no tienen un móvil al que avisar.
+      const pendientes = d.seats.filter((s, k) => k !== i && !s.ready && s.clientId !== null);
+      if (!pendientes.length) return { error: 'No hay nadie a quien avisar: los demás ya están listos.' };
+      const avisables = pendientes.filter((s) => !s.nudgedAt || now - s.nudgedAt >= NUDGE_GAP_MS);
+      if (!avisables.length) return { error: 'Acabas de avisarles. Espera unos segundos.' };
+      avisables.forEach((s) => { s.nudgedAt = now; });
       break;
     }
 
@@ -234,7 +257,11 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
         seats: d.seats.map((s) => s.player),
         round: d.round, starter: d.starter, first: d.first,
       }));
-      d.seats.forEach((s, k) => { s.player = closeRoundFor(s.player, k === d.first); s.ready = false; });
+      d.seats.forEach((s, k) => {
+        s.player = closeRoundFor(s.player, k === d.first);
+        s.ready = false;
+        delete s.nudgedAt; // un aviso es de una ronda: no reaparece en la siguiente
+      });
       if (d.first !== null) d.starter = d.first;
       d.first = null;
       d.round += 1;
@@ -287,6 +314,17 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
 
 export const allReady = (room: Room) =>
   room.seats.length > 0 && room.seats.every((s) => s.ready);
+
+/** Asientos que aún no marcaron «listo», en orden de mesa. */
+export const notReady = (room: Room) => room.seats.filter((s) => !s.ready);
+
+/**
+ * Este asiento es el único que falta por marcar «listo» (y hay más jugadores).
+ * Su móvil le recuerda solo, sin que el anfitrión tenga que pulsar nada.
+ */
+export const onlyOneMissing = (room: Room, seat: number) =>
+  room.seats.length > 1 && !room.seats[seat]?.ready &&
+  room.seats.every((s, k) => k === seat || s.ready);
 
 /** Cerrar la ronda en curso termina la partida (alguien completa una fila). */
 export const lastRound = (room: Room) =>

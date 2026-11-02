@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { calc } from '../lib/azul';
 import {
-  Action, MAX_SEATS, Room, apply, codeFromScan, isErr, lastRound, newCode, newRoom, parseAction,
-  roomStandings,
+  Action, MAX_SEATS, NUDGE_GAP_MS, Room, apply, codeFromScan, isErr, lastRound, newCode, newRoom,
+  notReady, onlyOneMissing, parseAction, roomStandings,
 } from '../lib/room';
 
 const ok = (r: Room | { error: string }): Room => {
@@ -169,6 +169,58 @@ describe('ciclo de la ronda', () => {
   });
 });
 
+describe('avisos a quien no marcó «listo»', () => {
+  it('el anfitrión avisa solo a los demás que faltan', () => {
+    let r = partida();
+    r = ok(act(r, B, { t: 'ready', value: true }));
+    r = ok(act(r, A, { t: 'nudge' }));
+    assert.equal(r.seats[0].nudgedAt, undefined, 'el anfitrión no se avisa a sí mismo');
+    assert.equal(r.seats[1].nudgedAt, undefined, 'Beto ya estaba listo');
+    assert.ok(r.seats[2].nudgedAt && r.seats[3].nudgedAt);
+    assert.deepEqual(notReady(r).map((s) => s.name), ['Ana', 'Caro', 'Dani']);
+  });
+
+  it('solo puede avisar el anfitrión y solo en partida', () => {
+    let r = partida();
+    falla(act(r, B, { t: 'nudge' }), 'Beto no es el anfitrión');
+    r = newRoom('LOBY', A, 'Ana');
+    falla(act(r, A, { t: 'nudge' }), 'en el lobby');
+  });
+
+  it('no deja avisar dos veces seguidas a la misma persona', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'nudge' }));
+    falla(act(r, A, { t: 'nudge' }), 'aviso repetido');
+    r.seats.forEach((s) => { if (s.nudgedAt) s.nudgedAt -= NUDGE_GAP_MS; });
+    ok(act(r, A, { t: 'nudge' }));
+  });
+
+  it('no avisa a asientos sin conexión ni si los demás están listos', () => {
+    let r = partida();
+    r = ok(act(r, B, { t: 'leave' }));
+    for (const who of [C, D]) r = ok(act(r, who, { t: 'ready', value: true }));
+    falla(act(r, A, { t: 'nudge' }), 'solo queda Beto, sin conexión');
+  });
+
+  it('el aviso se borra al marcar «listo» y al cerrar la ronda', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'nudge' }));
+    r = ok(act(r, B, { t: 'ready', value: true }));
+    assert.equal(r.seats[1].nudgedAt, undefined);
+    r = ok(act(r, A, { t: 'close' }));
+    assert.ok(r.seats.every((s) => s.nudgedAt === undefined));
+  });
+
+  it('detecta cuándo solo falta una persona', () => {
+    let r = partida();
+    for (const who of [A, B, C]) r = ok(act(r, who, { t: 'ready', value: true }));
+    assert.equal(onlyOneMissing(r, 3), true);
+    assert.equal(onlyOneMissing(r, 0), false, 'Ana ya está lista');
+    r = ok(act(r, B, { t: 'ready', value: false }));
+    assert.equal(onlyOneMissing(r, 3), false, 'ahora faltan dos');
+  });
+});
+
 describe('desconexiones', () => {
   it('el asiento queda reservado con sus puntos y se puede retomar', () => {
     let r = partida();
@@ -211,7 +263,7 @@ describe('cerrar la sala', () => {
     for (const a of [
       { t: 'start' }, { t: 'finish' }, { t: 'close' }, { t: 'undo' },
       { t: 'tap', r: 0, c: 0 }, { t: 'floor', delta: 1 }, { t: 'first' },
-      { t: 'ready', value: true }, { t: 'join', name: 'Evo' }, { t: 'close_room' },
+      { t: 'ready', value: true }, { t: 'join', name: 'Evo' }, { t: 'close_room' }, { t: 'nudge' },
     ] as Action[]) {
       falla(act(r, A, a), `${a.t} tras cerrar`);
       falla(act(r, E, a), `${a.t} de un extraño tras cerrar`);

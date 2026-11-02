@@ -371,3 +371,26 @@ main{
 @media (prefers-reduced-motion:reduce){
   *{transition:none !important;animation:none !important}
 }
+
+/* ----------------------------------------------------------------
+   Aviso «te están esperando» (a pantalla completa)
+   ---------------------------------------------------------------- */
+
+.aviso{
+  position:fixed;inset:0;z-index:50;display:grid;place-items:center;
+  padding:var(--s4);background:rgba(8,15,32,.72);
+  animation:aviso-in .2s ease-out;
+}
+.aviso-in{
+  width:100%;max-width:420px;display:grid;gap:var(--s3);
+  background:var(--panel);border:3px solid var(--bad);border-radius:var(--r-lg);
+  padding:var(--s5);box-shadow:0 12px 40px rgba(0,0,0,.4);
+  animation:aviso-pulso 1.2s ease-in-out infinite;
+}
+.aviso-in h2{margin:0;color:var(--bad);font-size:24px}
+.aviso-in p{margin:0;font-size:16px;line-height:1.45}
+@keyframes aviso-in{from{opacity:0}to{opacity:1}}
+@keyframes aviso-pulso{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--bad) 35%,transparent)}}
+@media (prefers-reduced-motion: reduce){
+  .aviso,.aviso-in{animation:none}
+}
