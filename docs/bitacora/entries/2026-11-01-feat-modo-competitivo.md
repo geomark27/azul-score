@@ -4,7 +4,7 @@ branch: feat/modo-competitivo
 type: feat
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#16"
 version: unreleased
 ---
 
