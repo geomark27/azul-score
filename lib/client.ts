@@ -58,10 +58,10 @@ async function call(path: string, init?: RequestInit) {
 export const createRoom = (name: string): Promise<{ room: Room }> =>
   call('/api/rooms', { method: 'POST', body: JSON.stringify({ name }) });
 
-export const fetchRoom = (code: string): Promise<{ room: Room; push: boolean }> =>
+export const fetchRoom = (code: string): Promise<{ room: Room; push: boolean; now?: number }> =>
   call(`/api/rooms/${encodeURIComponent(code)}`);
 
-export const sendAction = (code: string, action: Action): Promise<{ room: Room }> =>
+export const sendAction = (code: string, action: Action): Promise<{ room: Room; now?: number }> =>
   call(`/api/rooms/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify(action) });
 
 export type Live = {
@@ -75,6 +75,8 @@ export type Live = {
   /** Envía una acción. Devuelve si el servidor la aceptó. */
   send: (a: Action) => Promise<boolean>;
   clearActionError: () => void;
+  /** Hora estimada del servidor: la que usa el reloj competitivo. */
+  serverNow: () => number;
 };
 
 /**
@@ -93,6 +95,14 @@ export function useRoom(code: string): Live {
 
   const version = useRef(-1);
   const hasRoom = useRef(false);
+
+  // Diferencia entre el reloj del servidor y el del móvil. Se mide en cada
+  // respuesta tomando el punto medio de la petición, que compensa la latencia.
+  const offset = useRef(0);
+  const medir = useCallback((now: number | undefined, t0: number) => {
+    if (typeof now === 'number') offset.current = now - (t0 + Date.now()) / 2;
+  }, []);
+  const serverNow = useCallback(() => Date.now() + offset.current, []);
 
   // Descarta mensajes que lleguen desordenados (SSE y sondeo compiten).
   const accept = useCallback((r: Room) => {
@@ -128,8 +138,10 @@ export function useRoom(code: string): Live {
 
     const tick = async () => {
       try {
-        const { room: r, push: p } = await fetchRoom(code);
+        const t0 = Date.now();
+        const { room: r, push: p, now } = await fetchRoom(code);
         if (!alive) return;
+        medir(now, t0);
         accept(r);
         setConnected(true);
         if (p) { push = true; openStream(); }
@@ -164,12 +176,14 @@ export function useRoom(code: string): Live {
       es?.close();
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [code, accept]);
+  }, [code, accept, medir]);
 
   const send = useCallback(
     async (a: Action) => {
       try {
-        const { room: r } = await sendAction(code, a);
+        const t0 = Date.now();
+        const { room: r, now } = await sendAction(code, a);
+        medir(now, t0);
         accept(r);
         setActionError(null);
         return true;
@@ -179,11 +193,11 @@ export function useRoom(code: string): Live {
         return false;
       }
     },
-    [code, accept],
+    [code, accept, medir],
   );
 
   return {
-    room, error, connected, gone, actionError, send,
+    room, error, connected, gone, actionError, send, serverNow,
     clearActionError: () => setActionError(null),
   };
 }

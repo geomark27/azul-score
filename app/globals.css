@@ -394,3 +394,26 @@ main{
 @media (prefers-reduced-motion: reduce){
   .aviso,.aviso-in{animation:none}
 }
+
+/* ----------------------------------------------------------------
+   Modo competitivo: reloj
+   ---------------------------------------------------------------- */
+
+.modo{margin-top:var(--s4)}
+.modo label{display:block;font-weight:600;margin-bottom:var(--s2)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:var(--s2);margin-bottom:var(--s2)}
+.seg button{
+  min-height:var(--tap);border-radius:var(--r-md);border:1px solid var(--line);
+  background:var(--sunk);font-weight:600;color:var(--ink);
+}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.reloj{margin-bottom:var(--s3)}
+.reloj.mio{border-color:var(--accent);border-width:2px}
+.reloj-turno{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s2)}
+.reloj-turno span{font-weight:600;display:flex;gap:var(--s2);align-items:center}
+.reloj-turno b{font-size:40px;font-variant-numeric:tabular-nums;line-height:1}
+.reloj-turno b.neg,.clk.neg{color:var(--bad)}
+.clk{font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.clk.on{color:var(--accent);font-weight:700}
+.btn.turno{font-size:18px}
