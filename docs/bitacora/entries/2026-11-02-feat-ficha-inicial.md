@@ -4,7 +4,7 @@ branch: feat/ficha-inicial
 type: feat
 author: Marcos Ramos Jacome
 agents: claude
-pr: pending
+pr: "#19"
 version: unreleased
 ---
 
