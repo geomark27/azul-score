@@ -95,6 +95,17 @@ export function closeRoundFor(p: Player, first = false): Player {
 export const hasFullRow = (players: Player[]) =>
   players.some((p) => p.wall.some((r) => r.every(Boolean)));
 
+/**
+ * Al cerrar la ronda en curso, este jugador tendría una fila horizontal completa
+ * (contando lo que ya marcó para colocar). Según el reglamento, la partida
+ * termina al cerrar esa ronda: no se juega ninguna más.
+ */
+export const completesRow = (p: Player) =>
+  p.wall.some((row, r) => row.every((on, c) => on || p.pending[r] === c));
+
+/** Cerrar la ronda en curso termina la partida. */
+export const roundEndsGame = (players: Player[]) => players.some(completesRow);
+
 export type Standing = {
   p: Player;
   b: ReturnType<typeof bonuses>;

@@ -243,11 +243,14 @@ function Juego({
   const res = calc(p, iHaveFirst);
   const tiles = floorTiles(p, iHaveFirst);
   const listos = room.seats.filter((s) => s.ready).length;
+  const ultima = lastRound(room);
 
   return (
     <main>
-      {lastRound(room) && (
-        <div className="banner">Hay una fila completa: esta es la última ronda.</div>
+      {ultima && (
+        <div className="banner">
+          Alguien completa una fila en esta ronda: al cerrarla termina la partida y se suman los bonos.
+        </div>
       )}
 
       <div className="chips">
@@ -352,19 +355,22 @@ function Juego({
             {listos} de {room.seats.length} listos
             {allReady(room) ? ' · ya puedes cerrar la ronda' : ' · espera a que todos confirmen'}
           </p>
-          <div className="host-btns">
-            <button className="btn" disabled={!room.history.length} onClick={() => live.send({ t: 'undo' })}>
-              Deshacer ronda
-            </button>
-            <button className="btn" onClick={() => live.send({ t: 'finish' })}>
-              Terminar y sumar bonos
-            </button>
-          </div>
+          {/* En la última ronda la única salida es cerrarla: eso ya termina la partida. */}
+          {!ultima && (
+            <div className="host-btns">
+              <button className="btn" disabled={!room.history.length} onClick={() => live.send({ t: 'undo' })}>
+                Deshacer ronda
+              </button>
+              <button className="btn" onClick={() => live.send({ t: 'finish' })}>
+                Terminar y sumar bonos
+              </button>
+            </div>
+          )}
           <button
             className={`btn ${allReady(room) ? 'primary' : ''}`} style={{ width: '100%', marginTop: 8 }}
             onClick={() => live.send({ t: 'close' })}
           >
-            Cerrar ronda {room.round}
+            {ultima ? `Cerrar ronda ${room.round} y terminar` : `Cerrar ronda ${room.round}`}
           </button>
         </section>
       )}
@@ -445,19 +451,19 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
         {sharedWin && ' Hay victoria compartida.'}
       </p>
 
+      {/* La partida terminada no se reinicia: para otra, sala nueva. */}
       {host ? (
-        <div className="bar"><div className="in">
+        <div className="bar"><div className="in one">
           <button
-            className={`btn ${confirmar ? 'danger' : ''}`}
+            className={`btn ${confirmar ? 'danger' : 'primary'}`}
             onClick={cerrarSala}
           >
             {confirmar ? '¿Seguro? Toca otra vez' : 'Cerrar sala'}
           </button>
-          <button className="btn primary" onClick={() => live.send({ t: 'start' })}>Revancha</button>
         </div></div>
       ) : (
         <p className="hint esperando">
-          El anfitrión decide si hay revancha o cierra la sala.
+          Partida terminada. El anfitrión cerrará la sala.
         </p>
       )}
       <VersionTag />

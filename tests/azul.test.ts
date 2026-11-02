@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { PEN, bonuses, calc, closeRoundFor, colorOf, floorTiles, newPlayer, standings } from '../lib/azul';
+import {
+  PEN, bonuses, calc, closeRoundFor, colorOf, completesRow, floorTiles, newPlayer, roundEndsGame, standings,
+} from '../lib/azul';
 
 /** Jugador con `score` puntos y `rows` filas completas en la pared. */
 const conPuntos = (name: string, score: number, rows = 0) => {
@@ -182,5 +184,25 @@ describe('clasificación final', () => {
     assert.equal(a.potential, 64);
     assert.equal(a.potentialPlace, 1);
     assert.equal(t[0].potentialPlace, 1); // sin pérdidas, el puesto no cambia
+  });
+});
+
+describe('fin de partida', () => {
+  it('detecta la fila que se completa con lo marcado en la ronda', () => {
+    const p = newPlayer('Ana');
+    p.wall[2] = [true, true, false, true, true];
+    assert.equal(completesRow(p), false);
+    p.pending[2] = 2;
+    assert.equal(completesRow(p), true);
+    p.pending[2] = -1;
+    p.pending[1] = 2; // marcar otra fila no completa la 3.ª
+    assert.equal(completesRow(p), false);
+  });
+
+  it('una fila ya completa también cuenta', () => {
+    const p = newPlayer('Beto');
+    p.wall[4] = [true, true, true, true, true];
+    assert.equal(roundEndsGame([newPlayer('Ana'), p]), true);
+    assert.equal(roundEndsGame([newPlayer('Ana'), newPlayer('Caro')]), false);
   });
 });

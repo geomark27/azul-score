@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { calc } from '../lib/azul';
 import {
-  Action, MAX_SEATS, Room, apply, codeFromScan, isErr, newCode, newRoom, parseAction, roomStandings,
+  Action, MAX_SEATS, Room, apply, codeFromScan, isErr, lastRound, newCode, newRoom, parseAction,
+  roomStandings,
 } from '../lib/room';
 
 const ok = (r: Room | { error: string }): Room => {
@@ -218,8 +219,57 @@ describe('cerrar la sala', () => {
   });
 });
 
-describe('final y revancha', () => {
-  it('ordena el podio y permite volver a jugar con los mismos', () => {
+describe('fin de partida', () => {
+  /** Ana con la fila de arriba a falta de una casilla. */
+  const casiFila = (r: Room) => {
+    r.seats[0].player.wall[0] = [true, true, true, true, false];
+    return r;
+  };
+
+  it('avisa durante la ronda en que alguien va a completar una fila', () => {
+    let r = casiFila(partida());
+    assert.equal(lastRound(r), false);
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    assert.equal(lastRound(r), true);
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 })); // lo desmarca
+    assert.equal(lastRound(r), false);
+  });
+
+  it('cerrar esa ronda pasa directo al resultado', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'final');
+    assert.equal(r.round, 2, 'se cuenta la ronda jugada');
+    assert.deepEqual(r.seats[0].player.wall[0], [true, true, true, true, true]);
+  });
+
+  it('una ronda sin fila completa sigue la partida', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'game');
+  });
+
+  it('una sala vieja que ya tenía la fila completa termina al cerrar', () => {
+    let r = partida();
+    r.seats[2].player.wall[3] = [true, true, true, true, true];
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.view, 'final');
+  });
+
+  it('no hay vuelta atrás: ni deshacer ni más rondas ni revancha', () => {
+    let r = casiFila(partida());
+    r = ok(act(r, A, { t: 'tap', r: 0, c: 4 }));
+    r = ok(act(r, A, { t: 'close' }));
+    falla(act(r, A, { t: 'undo' }), 'deshacer tras el final');
+    falla(act(r, A, { t: 'close' }), 'otra ronda tras el final');
+    falla(act(r, A, { t: 'start' }), 'revancha');
+    assert.equal(r.history.length, 0);
+  });
+});
+
+describe('resultado', () => {
+  it('ordena el podio', () => {
     let r = partida();
     r.seats[0].player.score = 40;
     r.seats[1].player.score = 62;
@@ -233,10 +283,5 @@ describe('final y revancha', () => {
       roomStandings(r).map((s) => `${s.place} ${s.p.name}`),
       ['1 Dani', '2 Beto', '3 Caro', '4 Ana'],
     );
-
-    r = ok(act(r, A, { t: 'start' }));
-    assert.equal(r.round, 1);
-    assert.equal(r.seats.length, 4);
-    assert.ok(r.seats.every((s) => s.player.score === 0));
   });
 });
