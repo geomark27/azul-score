@@ -81,26 +81,9 @@ export function Reloj({
 }: { room: Room; seat: number; host: boolean; live: Live; now: number }) {
   const c = room.clock;
   if (!c) return null;
-  const abre = room.seats[room.starter]?.name ?? '—';
 
-  if (c.phase === 'ready') {
-    const puedo = host || seat === room.starter;
-    return (
-      <section className="panel reloj">
-        <h2>⏱ Ronda {room.round}</h2>
-        <p className="hint">
-          Reparte las fábricas. Abre <b>{abre}</b>{seat === room.starter ? ' (tú)' : ''}: su reloj empieza al pulsar.
-        </p>
-        {puedo ? (
-          <button className="btn primary" style={{ width: '100%' }} onClick={() => live.send({ t: 'turn_start' })}>
-            Empezar ronda · turno de {abre}
-          </button>
-        ) : (
-          <p className="hint" style={{ margin: 0 }}>Esperando a que {abre} empiece la ronda.</p>
-        )}
-      </section>
-    );
-  }
+  // Antes de empezar la ronda manda el panel «Empezar ronda» (inicio-ronda.tsx).
+  if (c.phase === 'ready') return null;
 
   if (c.phase === 'scoring') {
     return (

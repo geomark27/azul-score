@@ -30,7 +30,12 @@ export type Room = {
   view: 'lobby' | 'game' | 'final' | 'closed';
   seats: Seat[];
   round: number;
-  starter: number; // asiento que abre la ronda en curso
+  starter: number; // asiento que abre la ronda en curso (el de la ficha 1; en la 1.ª, sorteado)
+  /**
+   * La ronda espera a que quien la abre pulse «Empezar ronda». Mientras tanto
+   * nadie puede anotar. Ausente en salas anteriores a esta regla: no esperan.
+   */
+  waiting?: boolean;
   first: number | null; // asiento que tomó la ficha de jugador inicial
   /** Modo competitivo elegido en el lobby: minutos por jugador, o null para jugar sin reloj. */
   clockMinutes?: number | null;
@@ -52,7 +57,7 @@ export type Action =
   | { t: 'ready'; value: boolean }
   | { t: 'nudge' }
   | { t: 'clock_config'; minutes: number | null }
-  | { t: 'turn_start' }
+  | { t: 'round_start' }
   | { t: 'turn_pass' }
   | { t: 'turn_stop' }
   | { t: 'clock_pause' }
@@ -138,7 +143,10 @@ export function parseAction(raw: unknown): Action | Err {
       const m = Number(a.minutes);
       return isClockMinutes(m) ? { t: 'clock_config', minutes: m } : { error: 'Tiempo de reloj inválido.' };
     }
-    case 'turn_start': case 'turn_pass': case 'turn_stop': case 'clock_pause':
+    case 'turn_start': // nombre antiguo, solo existía con reloj
+    case 'round_start':
+      return { t: 'round_start' };
+    case 'turn_pass': case 'turn_stop': case 'clock_pause':
       return { t: a.t };
     case 'leave': case 'start': case 'first': case 'close': case 'undo':
     case 'finish': case 'close_room': case 'nudge':
@@ -165,6 +173,8 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
   const seated = () => (mine ? null : { error: 'No estás sentado en esta partida.' });
   const inGame = () => (d.view === 'game' ? null : { error: 'La partida no está en curso.' });
   const withClock = () => (d.clock ? null : { error: 'Esta partida se juega sin reloj.' });
+  const started = () =>
+    d.waiting ? { error: `Espera a que ${d.seats[d.starter]?.name ?? 'quien abre'} empiece la ronda.` } : null;
   const now = Date.now();
 
   switch (action.t) {
@@ -222,7 +232,9 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       if (d.seats.length < MIN_SEATS) return { error: 'Hacen falta al menos 2 jugadores.' };
       d.view = 'game';
       d.round = 1;
-      d.starter = 0;
+      // Reglamento: el jugador inicial de la primera ronda se sortea.
+      d.starter = Math.floor(Math.random() * d.seats.length);
+      d.waiting = true;
       d.first = null;
       d.history = [];
       d.clock = d.clockMinutes ? newClock(d.clockMinutes, d.seats.length) : null;
@@ -237,12 +249,13 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       break;
     }
 
-    case 'turn_start': {
-      const e = seated() ?? inGame() ?? withClock(); if (e) return e;
-      const c = d.clock!;
-      if (c.phase !== 'ready') return { error: 'La ronda ya empezó.' };
+    case 'round_start': {
+      const e = seated() ?? inGame(); if (e) return e;
+      if (!d.waiting) return { error: 'La ronda ya empezó.' };
+      // La abre quien tiene la ficha 1; el anfitrión puede hacerlo por él si se despista o se desconecta.
       if (!host && i !== d.starter) return { error: `Empieza la ronda ${d.seats[d.starter].name} o el anfitrión.` };
-      startOffer(c, d.starter, now);
+      d.waiting = false;
+      if (d.clock) startOffer(d.clock, d.starter, now); // en competitivo, arranca su reloj
       break;
     }
 
@@ -266,7 +279,7 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     }
 
     case 'tap': {
-      const e = seated() ?? inGame(); if (e) return e;
+      const e = seated() ?? inGame() ?? started(); if (e) return e;
       const w = mine!.player;
       if (w.wall[action.r][action.c]) return { error: 'Ese azulejo ya está colocado.' };
       w.pending[action.r] = w.pending[action.r] === action.c ? -1 : action.c;
@@ -275,29 +288,28 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     }
 
     case 'floor': {
-      const e = seated() ?? inGame(); if (e) return e;
+      const e = seated() ?? inGame() ?? started(); if (e) return e;
       mine!.player.floor = Math.max(0, Math.min(PEN.length, mine!.player.floor + action.delta));
       mine!.ready = false;
       break;
     }
 
     case 'first': {
-      const e = seated() ?? inGame(); if (e) return e;
+      const e = seated() ?? inGame() ?? started(); if (e) return e;
       // La ficha es única: tomarla se la quita a quien la tuviera.
       d.first = d.first === i ? null : i;
       break;
     }
 
     case 'ready': {
-      const e = seated() ?? inGame(); if (e) return e;
+      const e = seated() ?? inGame() ?? started(); if (e) return e;
       mine!.ready = action.value;
       if (action.value) delete mine!.nudgedAt; // ya respondió al aviso
       break;
     }
 
     case 'nudge': {
-      const e = hostOnly() ?? inGame(); if (e) return e;
-      const now = Date.now();
+      const e = hostOnly() ?? inGame() ?? started(); if (e) return e;
       // Solo a los demás que están conectados y sin «listo». Los asientos sin
       // conexión no tienen un móvil al que avisar.
       const pendientes = d.seats.filter((s, k) => k !== i && !s.ready && s.clientId !== null);
@@ -309,7 +321,7 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
     }
 
     case 'close': {
-      const e = hostOnly() ?? inGame(); if (e) return e;
+      const e = hostOnly() ?? inGame() ?? started(); if (e) return e;
       d.history.push(JSON.stringify({
         seats: d.seats.map((s) => s.player),
         round: d.round, starter: d.starter, first: d.first, clock: d.clock ?? null,
@@ -335,6 +347,9 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       if (hasFullRow(d.seats.map((s) => s.player))) {
         d.view = 'final';
         d.history = [];
+        d.waiting = false;
+      } else {
+        d.waiting = true; // la siguiente espera a quien se llevó la ficha 1
       }
       break;
     }
@@ -356,6 +371,7 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
         d.clock = o.clock;
         endOffer(d.clock, now);
       }
+      d.waiting = false; // se vuelve a la ronda ya empezada, para corregirla
       d.view = 'game';
       break;
     }

@@ -17,13 +17,22 @@ const act = (room: Room, who: string, a: Action) => apply(room, who, a);
 
 const A = 'cli-ana', B = 'cli-beto', C = 'cli-caro', D = 'cli-dani', E = 'cli-evo';
 
-/** Sala de cuatro con la partida ya iniciada. */
-function partida() {
+/** Sala de cuatro en el lobby. */
+function sala() {
   let r = newRoom('TEST', A, 'Ana');
   r = ok(act(r, B, { t: 'join', name: 'Beto' }));
   r = ok(act(r, C, { t: 'join', name: 'Caro' }));
-  r = ok(act(r, D, { t: 'join', name: 'Dani' }));
-  return ok(act(r, A, { t: 'start' }));
+  return ok(act(r, D, { t: 'join', name: 'Dani' }));
+}
+
+/**
+ * Partida empezada y con la primera ronda en marcha. El sorteo se fija en Ana
+ * para que las pruebas no dependan del azar.
+ */
+function partida() {
+  const r = ok(act(sala(), A, { t: 'start' }));
+  r.starter = 0;
+  return ok(act(r, A, { t: 'round_start' }));
 }
 
 describe('código de sala', () => {
@@ -227,13 +236,15 @@ describe('modo competitivo', () => {
     let r = newRoom('RELJ', A, 'Ana');
     for (const [who, n] of [[B, 'Beto'], [C, 'Caro'], [D, 'Dani']]) r = ok(act(r, who, { t: 'join', name: n }));
     r = ok(act(r, A, { t: 'clock_config', minutes: 5 }));
-    return ok(act(r, A, { t: 'start' }));
+    r = ok(act(r, A, { t: 'start' }));
+    r.starter = 0; // sin azar en las pruebas
+    return r;
   }
 
   it('por defecto se juega sin reloj', () => {
     const r = partida();
     assert.equal(r.clock ?? null, null);
-    falla(act(r, A, { t: 'turn_start' }), 'sin reloj');
+    falla(act(r, A, { t: 'turn_pass' }), 'sin reloj');
   });
 
   it('solo el anfitrión lo elige, en el lobby y con minutos válidos', () => {
@@ -249,8 +260,8 @@ describe('modo competitivo', () => {
 
   it('empieza quien abre la ronda y el turno pasa en orden de mesa', () => {
     let r = conReloj();
-    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre la ronda');
-    r = ok(act(r, A, { t: 'turn_start' }));
+    falla(act(r, C, { t: 'round_start' }), 'Caro no abre la ronda');
+    r = ok(act(r, A, { t: 'round_start' }));
     assert.equal(r.clock?.turn, 0);
     falla(act(r, B, { t: 'turn_pass' }), 'no es el turno de Beto');
     r = ok(act(r, A, { t: 'turn_pass' }));
@@ -264,9 +275,9 @@ describe('modo competitivo', () => {
 
   it('al cerrar la ronda cobra el tiempo extra y la siguiente la abre la ficha', () => {
     let r = conReloj();
+    r = ok(act(r, A, { t: 'round_start' }));
     r = ok(act(r, B, { t: 'tap', r: 0, c: 0 }));
     r = ok(act(r, B, { t: 'first' }));
-    r = ok(act(r, A, { t: 'turn_start' }));
     r.clock!.left[1] = -45_000; // Beto se pasó 45 s: 2 puntos
     r.seats[1].player.score = 10;
     r = ok(act(r, A, { t: 'close' }));
@@ -277,14 +288,14 @@ describe('modo competitivo', () => {
     assert.equal(beto.log.at(-1), -2, 'la ronda refleja la multa');
     assert.equal(r.clock?.phase, 'ready');
     assert.equal(r.starter, 1, 'abre Beto, que tomó la ficha');
-    falla(act(r, C, { t: 'turn_start' }), 'Caro no abre esta ronda');
-    r = ok(act(r, B, { t: 'turn_start' }));
+    falla(act(r, C, { t: 'round_start' }), 'Caro no abre esta ronda');
+    r = ok(act(r, B, { t: 'round_start' }));
     assert.equal(r.clock?.turn, 1);
   });
 
   it('la multa no deja la puntuación por debajo de 0', () => {
     let r = conReloj();
-    r = ok(act(r, A, { t: 'turn_start' }));
+    r = ok(act(r, A, { t: 'round_start' }));
     r.clock!.left[2] = -10 * 60_000;
     r = ok(act(r, A, { t: 'close' }));
     assert.equal(r.seats[2].player.score, 0);
@@ -292,11 +303,72 @@ describe('modo competitivo', () => {
 
   it('deshacer devuelve el reloj, parado', () => {
     let r = conReloj();
-    r = ok(act(r, A, { t: 'turn_start' }));
+    r = ok(act(r, A, { t: 'round_start' }));
     r = ok(act(r, A, { t: 'close' }));
     r = ok(act(r, A, { t: 'undo' }));
     assert.equal(r.clock?.phase, 'scoring');
     assert.equal(r.clock?.since, null);
+  });
+});
+
+describe('ficha inicial y comienzo de ronda', () => {
+  it('la primera ronda la abre alguien sorteado', () => {
+    const vistos = new Set<number>();
+    for (let k = 0; k < 400; k++) {
+      const r = ok(act(sala(), A, { t: 'start' }));
+      assert.ok(r.starter >= 0 && r.starter < 4);
+      assert.equal(r.waiting, true);
+      vistos.add(r.starter);
+    }
+    assert.equal(vistos.size, 4, 'a todos les puede tocar');
+  });
+
+  it('hasta que empiece la ronda nadie puede anotar ni cerrar', () => {
+    const r = ok(act(sala(), A, { t: 'start' }));
+    r.starter = 1;
+    for (const a of [
+      { t: 'tap', r: 0, c: 0 }, { t: 'floor', delta: 1 }, { t: 'first' }, { t: 'ready', value: true },
+    ] as Action[]) falla(act(r, C, a), `${a.t} antes de empezar`);
+    falla(act(r, A, { t: 'close' }), 'cerrar sin empezar');
+    falla(act(r, A, { t: 'nudge' }), 'avisar sin empezar');
+  });
+
+  it('la empieza quien abre o el anfitrión, y solo una vez', () => {
+    let r = ok(act(sala(), A, { t: 'start' }));
+    r.starter = 1;
+    falla(act(r, C, { t: 'round_start' }), 'Caro no abre');
+    r = ok(act(r, B, { t: 'round_start' }));
+    assert.equal(r.waiting, false);
+    ok(act(r, C, { t: 'tap', r: 0, c: 0 }));
+    falla(act(r, B, { t: 'round_start' }), 'ya empezada');
+
+    r = ok(act(sala(), A, { t: 'start' }));
+    r.starter = 2;
+    r = ok(act(r, A, { t: 'round_start' })); // el anfitrión por Caro
+    assert.equal(r.waiting, false);
+  });
+
+  it('la siguiente ronda espera a quien se llevó la ficha 1', () => {
+    let r = partida();
+    r = ok(act(r, D, { t: 'first' }));
+    r = ok(act(r, A, { t: 'close' }));
+    assert.equal(r.starter, 3);
+    assert.equal(r.waiting, true);
+    falla(act(r, B, { t: 'tap', r: 0, c: 0 }), 'esperando a Dani');
+    r = ok(act(r, D, { t: 'round_start' }));
+    ok(act(r, B, { t: 'tap', r: 0, c: 0 }));
+  });
+
+  it('deshacer vuelve a la ronda anterior ya empezada', () => {
+    let r = partida();
+    r = ok(act(r, A, { t: 'close' }));
+    r = ok(act(r, A, { t: 'undo' }));
+    assert.equal(r.waiting, false);
+    ok(act(r, B, { t: 'tap', r: 0, c: 0 }));
+  });
+
+  it('acepta el nombre antiguo de la acción', () => {
+    assert.deepEqual(parseAction({ t: 'turn_start' }), { t: 'round_start' });
   });
 });
 
