@@ -38,13 +38,19 @@ export const newPlayer = (name: string): Player => ({
 export const floorTiles = (p: Player, first = false) =>
   Math.min(PEN.length, p.floor + (first ? 1 : 0));
 
-/**
- * Puntos de la ronda en curso (colocación de arriba abajo + suelo).
- * `first` = este jugador tomó la ficha de jugador inicial: ocupa un espacio del suelo.
- */
-export function calc(p: Player, first = false) {
+/** Un azulejo que pasa a la pared al cerrar la ronda y lo que suma. */
+export type Placement = {
+  r: number;
+  c: number;
+  h: number; // largo de la línea horizontal contigua, contándolo a él
+  v: number; // largo de la línea vertical contigua, contándolo a él
+  points: number;
+};
+
+/** Azulejos marcados en la ronda en curso, colocados de arriba abajo como manda el reglamento. */
+export function placements(p: Player): Placement[] {
   const w = p.wall.map((r) => r.slice());
-  let gain = 0;
+  const out: Placement[] = [];
   for (let r = 0; r < 5; r++) {
     const c = p.pending[r];
     if (c < 0) continue;
@@ -54,8 +60,17 @@ export function calc(p: Player, first = false) {
     for (let i = c + 1; i < 5 && w[r][i]; i++) h++;
     for (let i = r - 1; i >= 0 && w[i][c]; i--) v++;
     for (let i = r + 1; i < 5 && w[i][c]; i++) v++;
-    gain += h === 1 && v === 1 ? 1 : (h > 1 ? h : 0) + (v > 1 ? v : 0);
+    out.push({ r, c, h, v, points: h === 1 && v === 1 ? 1 : (h > 1 ? h : 0) + (v > 1 ? v : 0) });
   }
+  return out;
+}
+
+/**
+ * Puntos de la ronda en curso (colocación de arriba abajo + suelo).
+ * `first` = este jugador tomó la ficha de jugador inicial: ocupa un espacio del suelo.
+ */
+export function calc(p: Player, first = false) {
+  const gain = placements(p).reduce((a, t) => a + t.points, 0);
   const tiles = floorTiles(p, first);
   const pen = PEN.slice(0, tiles).reduce((a, b) => a + b, 0);
   const after = Math.max(0, p.score + gain - pen);
@@ -64,16 +79,18 @@ export function calc(p: Player, first = false) {
 
 /** Bonos de fin de partida. Solo horizontales, verticales y colores: las diagonales no puntúan. */
 export function bonuses(p: Player) {
-  let rows = 0, cols = 0, colors = 0;
-  for (let r = 0; r < 5; r++) if (p.wall[r].every(Boolean)) rows++;
-  for (let c = 0; c < 5; c++) if (p.wall.every((row) => row[c])) cols++;
+  // Índices de lo completo, para poder decir cuáles y no solo cuántos.
+  const full = { rows: [] as number[], cols: [] as number[], colors: [] as number[] };
+  for (let r = 0; r < 5; r++) if (p.wall[r].every(Boolean)) full.rows.push(r);
+  for (let c = 0; c < 5; c++) if (p.wall.every((row) => row[c])) full.cols.push(c);
   for (let k = 0; k < 5; k++) {
     let n = 0;
     for (let r = 0; r < 5; r++)
       for (let c = 0; c < 5; c++) if (p.wall[r][c] && colorOf(r, c) === k) n++;
-    if (n === 5) colors++;
+    if (n === 5) full.colors.push(k);
   }
-  return { rows, cols, colors, total: rows * 2 + cols * 7 + colors * 10 };
+  const rows = full.rows.length, cols = full.cols.length, colors = full.colors.length;
+  return { rows, cols, colors, total: rows * 2 + cols * 7 + colors * 10, full };
 }
 
 /** Cierra la ronda: aplica colocaciones, suelo y reinicia el estado temporal. */
