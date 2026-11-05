@@ -8,9 +8,10 @@ import SalaQr from '../../sala-qr';
 import AvisoListo from '../../aviso-listo';
 import { ModoJuego, Reloj, TiempoChip, useAhora } from '../../reloj';
 import InicioRonda from '../../inicio-ronda';
+import DescargarRegistro from '../../descargar-registro';
 import { COLORS, PEN, calc, colorOf, floorTiles } from '@/lib/azul';
 import {
-  MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, notReady, roomStandings,
+  MAX_SEATS, MIN_SEATS, Room, Seat, allReady, lastRound, notReady, roomJournal, roomStandings,
 } from '@/lib/room';
 import { clientId, saveName, savedName, useRoom } from '@/lib/client';
 
@@ -435,6 +436,7 @@ function Juego({
         </section>
       )}
 
+      <DescargarRegistro source={roomJournal(room)} />
       <button className="linkbtn" style={{ color: 'var(--muted)' }} onClick={() => live.send({ t: 'leave' })}>
         Salir de la sala
       </button>
@@ -528,6 +530,8 @@ function Final({ room, host, live }: { room: Room; host: boolean; live: ReturnTy
         Orden por puntos totales. Desempate: más filas horizontales completas; si persiste, el puesto se comparte.
         {sharedWin && ' Hay victoria compartida.'}
       </p>
+
+      <DescargarRegistro source={roomJournal(room)} />
 
       {/* La partida terminada no se reinicia: para otra, sala nueva. */}
       {host ? (
