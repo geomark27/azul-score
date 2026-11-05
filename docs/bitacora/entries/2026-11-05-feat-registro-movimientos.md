@@ -5,7 +5,7 @@ type: feat
 author: Marcos Ramos
 agents: claude
 pr: pending
-version: unreleased
+version: v0.4.1
 ---
 
 # Registro de movimientos descargable en .txt

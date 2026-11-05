@@ -44,6 +44,7 @@ Tipos (los prefijos de los commits): `feat`, `fix`, `chore`, `docs`, `refactor`,
 <!-- releases:start -->
 | Versión | Fecha | Tipo | Entradas |
 |---|---|---|---|
+| [v0.4.1](releases/v0.4.1.md) | 2026-11-05 | patch | 1 |
 | [v0.4.0](releases/v0.4.0.md) | 2026-11-02 | minor | 1 |
 | [v0.3.0](releases/v0.3.0.md) | 2026-11-01 | minor | 5 |
 | [v0.2.0](releases/v0.2.0.md) | 2026-10-26 | minor | reconstruida |
