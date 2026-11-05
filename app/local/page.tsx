@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import VersionTag from '../version-tag';
+import DescargarRegistro from '../descargar-registro';
 import {
   COLORS, PEN, Player, calc, closeRoundFor, colorOf, floorTiles, hasFullRow, newPlayer, roundEndsGame,
   standings,
 } from '@/lib/azul';
+import { RoundRecord, markUndone, roundPlayer } from '@/lib/registro';
 
 type State = {
   view: 'setup' | 'game' | 'final';
@@ -19,6 +21,8 @@ type State = {
   starter: number;
   first: number | null; // quién tomó la ficha de jugador inicial esta ronda
   history: string[];
+  startedAt?: number;
+  journal: RoundRecord[]; // registro de movimientos, como en las salas
 };
 
 const KEY = 'azul-marcador-v1';
@@ -32,6 +36,7 @@ const INITIAL: State = {
   starter: 0,
   first: null,
   history: [],
+  journal: [],
 };
 
 const sign = (n: number) => (n > 0 ? `+${n}` : String(n));
@@ -72,6 +77,7 @@ export default function Page() {
       // Reglamento: el jugador inicial de la primera ronda se sortea.
       d.starter = Math.floor(Math.random() * d.players.length);
       d.round = 1; d.active = d.starter; d.first = null; d.history = []; d.view = 'game';
+      d.startedAt = Date.now(); d.journal = [];
     });
 
   const tapCell = (r: number, c: number) =>
@@ -96,6 +102,10 @@ export default function Page() {
       d.history.push(JSON.stringify({
         players: d.players, round: d.round, active: d.active, first: d.first, starter: d.starter,
       }));
+      d.journal.push({
+        round: d.round, at: Date.now(), starter: d.players[d.starter]?.name ?? '',
+        players: d.players.map((p, i) => roundPlayer(p, i === d.first)),
+      });
       d.players = d.players.map((p, i) => closeRoundFor(p, i === d.first));
       // Quien tomó la ficha abre la siguiente ronda.
       if (d.first !== null) { d.active = d.first; d.starter = d.first; }
@@ -113,6 +123,7 @@ export default function Page() {
       const h = d.history.pop();
       if (!h) return;
       const o = JSON.parse(h);
+      markUndone(d.journal, Date.now());
       d.players = o.players; d.round = o.round;
       d.active = o.active ?? d.active;
       d.first = o.first ?? null;
@@ -128,9 +139,13 @@ export default function Page() {
     }
     if (askTimer.current) clearTimeout(askTimer.current);
     setAskNew(false);
-    update((d) => { d.view = 'setup'; d.players = []; d.history = []; d.first = null; });
+    update((d) => { d.view = 'setup'; d.players = []; d.history = []; d.first = null; d.journal = []; });
   };
   const newLabel = askNew ? '¿Seguro? Toca otra vez' : 'Partida nueva';
+  const registro = {
+    code: null, startedAt: s.startedAt, players: s.players, journal: s.journal,
+    round: s.round, finished: s.view === 'final',
+  };
 
   /* ---------- Setup ---------- */
   if (s.view === 'setup') {
@@ -206,6 +221,7 @@ export default function Page() {
           Orden por puntos totales. Desempate: más filas horizontales completas; si persiste, el puesto se comparte.
           {sharedWin && ' Hay victoria compartida.'}
         </p>
+        <DescargarRegistro source={registro} />
         {/* «Volver» solo si se terminó a mano antes de tiempo; con una fila completa no hay más rondas. */}
         <div className="bar"><div className={`in ${terminada ? 'one' : ''}`}>
           {!terminada && (
@@ -322,6 +338,7 @@ export default function Page() {
       {!ultima && (
         <button className="linkbtn" onClick={() => update((d) => { d.view = 'final'; })}>Terminar partida y sumar bonos</button>
       )}
+      <DescargarRegistro source={registro} />
       <button className="linkbtn" style={{ color: 'var(--muted)' }} onClick={newGame}>{newLabel}</button>
 
       <div className="bar"><div className={`in ${ultima ? 'one' : ''}`}>

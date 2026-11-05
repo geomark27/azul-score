@@ -4,6 +4,7 @@ import {
 import {
   Clock, closeRoundClock, endOffer, isClockMinutes, newClock, passTurn, startOffer, togglePause,
 } from './clock';
+import { JournalSource, RoundRecord, markUndone, roundPlayer } from './registro';
 
 export const MAX_SEATS = 4;
 export const MIN_SEATS = 2;
@@ -42,6 +43,13 @@ export type Room = {
   /** Reloj de la partida en curso; null o ausente = modo normal. */
   clock?: Clock | null;
   history: string[];
+  /** Momento en que empezó la partida. Ausente en salas anteriores al registro. */
+  startedAt?: number;
+  /**
+   * Registro de movimientos: cada ronda cerrada, también las deshechas (marcadas).
+   * A diferencia de `history`, no se vacía al terminar: es lo que se descarga.
+   */
+  journal?: RoundRecord[];
   version: number;
   updatedAt: number;
 };
@@ -237,6 +245,8 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       d.waiting = true;
       d.first = null;
       d.history = [];
+      d.startedAt = now;
+      d.journal = [];
       d.clock = d.clockMinutes ? newClock(d.clockMinutes, d.seats.length) : null;
       d.seats.forEach((s) => { s.ready = false; s.player = newPlayer(s.name); });
       break;
@@ -328,7 +338,11 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
       }));
       // Tiempo extra: se cobra al cerrar, sobre los puntos ya calculados de la ronda.
       const multas = d.clock ? closeRoundClock(d.clock, now) : [];
+      const record: RoundRecord = {
+        round: d.round, at: now, starter: d.seats[d.starter]?.name ?? '', by: mine?.name, players: [],
+      };
       d.seats.forEach((s, k) => {
+        const before = s.player;
         s.player = closeRoundFor(s.player, k === d.first);
         const multa = Math.min(multas[k] ?? 0, s.player.score);
         if (multa > 0) {
@@ -336,9 +350,11 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
           s.player.log[s.player.log.length - 1] -= multa;
           s.player.timeLost = (s.player.timeLost ?? 0) + multa;
         }
+        record.players.push(roundPlayer(before, k === d.first, multa, s.ready));
         s.ready = false;
         delete s.nudgedAt; // un aviso es de una ronda: no reaparece en la siguiente
       });
+      (d.journal ??= []).push(record);
       if (d.first !== null) d.starter = d.first;
       d.first = null;
       d.round += 1;
@@ -363,6 +379,8 @@ export function apply(room: Room, clientId: string, action: Action): Room | Err 
         seats: Player[]; round: number; starter: number; first: number | null; clock?: Clock | null;
       };
       d.seats.forEach((s, k) => { if (o.seats[k]) s.player = o.seats[k]; s.ready = false; });
+      // El cierre deshecho no se borra del registro: queda a la vista como corrección.
+      if (d.journal) markUndone(d.journal, now, mine?.name);
       d.round = o.round;
       d.starter = o.starter;
       d.first = o.first;
@@ -421,3 +439,14 @@ export const lastRound = (room: Room) =>
 
 export const roomStandings = (room: Room): Standing[] =>
   standings(room.seats.map((s) => s.player));
+
+/** Lo que necesita el registro de movimientos de esta sala. */
+export const roomJournal = (room: Room): Omit<JournalSource, 'version' | 'now'> => ({
+  code: room.code,
+  startedAt: room.startedAt,
+  clockMinutes: room.clock ? room.clockMinutes ?? null : null,
+  players: room.seats.map((s) => s.player),
+  journal: room.journal ?? [],
+  round: room.round,
+  finished: room.view === 'final',
+});
